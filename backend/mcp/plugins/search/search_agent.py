@@ -5,6 +5,7 @@
 import os
 import json
 from typing import Dict, Any
+from loguru import logger
 
 
 class SearchAgent:
@@ -14,7 +15,7 @@ class SearchAgent:
         """初始化搜索 Agent"""
         self.api_key = os.getenv("SERPAPI_API_KEY")
         if not self.api_key:
-            print("⚠️  警告: SERPAPI_API_KEY 未配置,搜索功能可能无法使用")
+            logger.warning("SERPAPI_API_KEY 未配置,搜索功能可能无法使用")
 
     def _search_serpapi(self, query: str) -> str:
         """
@@ -34,7 +35,7 @@ class SearchAgent:
         if not self.api_key:
             return "错误: SERPAPI_API_KEY 未在环境变量中配置"
 
-        print(f"🔍 正在执行 [SerpApi] 网页搜索: {query}")
+        logger.info(f"正在执行 [SerpApi] 网页搜索: {query}")
 
         try:
             params = {
@@ -69,6 +70,7 @@ class SearchAgent:
             return f"对不起,没有找到关于 '{query}' 的信息。"
 
         except Exception as e:
+            logger.error(f"搜索时发生错误: {str(e)}")
             return f"搜索时发生错误: {str(e)}"
 
     def handle_handoff(self, task: Dict[str, Any]) -> str:

@@ -4,6 +4,7 @@ MCP 管理器
 """
 
 from typing import Dict, Any, List, Optional
+from loguru import logger
 from backend.mcp.registry import MCPRegistry, get_registry
 from backend.mcp.adapter import MCPAdapterTool
 
@@ -27,9 +28,9 @@ class MCPManager:
             try:
                 tool = MCPAdapterTool(plugin_name, self.registry)
                 self.tools[plugin_name] = tool
-                print(f"✅ 加载工具: {plugin_name}")
+                logger.success(f"加载工具: {plugin_name}")
             except Exception as e:
-                print(f"❌ 加载工具失败 {plugin_name}: {e}")
+                logger.error(f"加载工具失败 {plugin_name}: {e}")
 
     def get_tool(self, name: str) -> Optional[MCPAdapterTool]:
         """获取指定名称的工具"""
@@ -56,11 +57,16 @@ class MCPManager:
         """
         tool = self.get_tool(tool_name)
         if not tool:
+            logger.error(f"未找到工具: {tool_name}")
             return f"错误: 未找到工具 {tool_name}"
 
         try:
-            return tool.run(parameters)
+            logger.info(f"调用工具: {tool_name}, 参数: {parameters}")
+            result = tool.run(parameters)
+            logger.debug(f"工具 {tool_name} 执行完成")
+            return result
         except Exception as e:
+            logger.exception(f"调用工具 {tool_name} 失败")
             return f"调用工具 {tool_name} 失败: {str(e)}"
 
     def list_tools(self) -> str:
@@ -136,16 +142,25 @@ _DEFAULT_PLUGIN_DIR = os.path.join(
 )
 
 
-def get_mcp_manager() -> MCPManager:
+def get_mcp_manager(auto_setup_logger: bool = True) -> MCPManager:
     """
     获取全局 MCP Manager 单例
     
     使用固定的插件目录: backend/mcp/plugins
     这是一个真正的单例，不接受参数，每次都返回同一个实例
+    
+    Args:
+        auto_setup_logger: 是否自动初始化日志配置 (默认 True)
     """
     global _manager_instance
     
     if _manager_instance is None:
+        # 首次初始化时,自动配置日志
+        if auto_setup_logger:
+            from backend.core.logger import setup_logger
+            setup_logger(log_level="INFO", log_file=None)
+            logger.debug("MCP Manager 自动初始化日志配置")
+        
         _manager_instance = MCPManager()
     
     return _manager_instance

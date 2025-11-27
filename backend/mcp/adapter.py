@@ -5,6 +5,7 @@ MCP 适配器
 
 import asyncio
 from typing import Dict, Any, List
+from loguru import logger
 from backend.core.tool import Tool, ToolParameter
 from backend.mcp.registry import MCPRegistry
 
@@ -61,6 +62,8 @@ class MCPAdapterTool(Tool):
         支持同步和异步方法
         """
         try:
+            logger.debug(f"执行插件 {self.plugin_name}, 参数: {parameters}")
+            
             # 优先查找 handle_handoff 方法 (NagaAgent 风格)
             if hasattr(self.instance, 'handle_handoff'):
                 method = self.instance.handle_handoff
@@ -109,13 +112,13 @@ class MCPAdapterTool(Tool):
                     return method(**parameters)
 
             else:
-                return f"错误: 插件 {self.plugin_name} 未实现标准入口方法 (handle_handoff/handle/run)"
+                error_msg = f"错误: 插件 {self.plugin_name} 未实现标准入口方法 (handle_handoff/handle/run)"
+                logger.error(error_msg)
+                return error_msg
 
         except Exception as e:
-            import traceback
-            error_msg = f"执行插件 {self.plugin_name} 时出错: {str(e)}\n{traceback.format_exc()}"
-            print(error_msg)
-            return error_msg
+            logger.exception(f"执行插件 {self.plugin_name} 时出错")
+            return f"执行插件 {self.plugin_name} 时出错: {str(e)}"
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式,方便序列化"""

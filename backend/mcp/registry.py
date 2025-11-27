@@ -9,6 +9,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Dict, Any, Optional, List
+from loguru import logger
 
 
 class MCPRegistry:
@@ -24,23 +25,22 @@ class MCPRegistry:
         plugin_path = Path(self.plugin_dir)
 
         if not plugin_path.exists():
-            print(f"⚠️  插件目录不存在: {self.plugin_dir}")
+            logger.warning(f"插件目录不存在: {self.plugin_dir}")
             return
 
         # 查找所有 manifest.json 文件
         manifest_files = list(plugin_path.glob("**/manifest.json"))
 
         if not manifest_files:
-            print(f"⚠️  未找到任何 manifest.json 文件在目录: {self.plugin_dir}")
+            logger.warning(f"未找到任何 manifest.json 文件在目录: {self.plugin_dir}")
             return
 
+        logger.info(f"开始扫描插件目录: {self.plugin_dir}, 找到 {len(manifest_files)} 个插件")
         for manifest_file in manifest_files:
             try:
                 self._load_plugin(manifest_file)
             except Exception as e:
-                print(f"❌ 加载插件失败 {manifest_file}: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.exception(f"加载插件失败 {manifest_file}: {e}")
 
     def _load_plugin(self, manifest_path: Path):
         """加载单个插件"""
@@ -51,7 +51,7 @@ class MCPRegistry:
 
             plugin_name = manifest.get('name')
             if not plugin_name:
-                print(f"❌ Manifest 缺少 'name' 字段: {manifest_path}")
+                logger.error(f"Manifest 缺少 'name' 字段: {manifest_path}")
                 return
 
             # 获取入口点配置
@@ -60,14 +60,14 @@ class MCPRegistry:
             class_name = entry_point.get('class')
 
             if not module_name or not class_name:
-                print(f"❌ Manifest 缺少 entryPoint 配置: {plugin_name}")
+                logger.error(f"Manifest 缺少 entryPoint 配置: {plugin_name}")
                 return
 
             # 动态导入模块
             try:
                 module = importlib.import_module(module_name)
             except ImportError as e:
-                print(f"❌ 无法导入模块 {module_name}: {e}")
+                logger.error(f"无法导入模块 {module_name}: {e}")
                 return
 
             # 获取类并实例化
@@ -75,10 +75,10 @@ class MCPRegistry:
                 plugin_class = getattr(module, class_name)
                 instance = plugin_class()
             except AttributeError:
-                print(f"❌ 模块 {module_name} 中未找到类 {class_name}")
+                logger.error(f"模块 {module_name} 中未找到类 {class_name}")
                 return
             except Exception as e:
-                print(f"❌ 实例化 {class_name} 失败: {e}")
+                logger.error(f"实例化 {class_name} 失败: {e}")
                 return
 
             # 注册到 registry
@@ -92,14 +92,12 @@ class MCPRegistry:
             # 缓存 manifest
             self.manifest_cache[plugin_name] = manifest
 
-            print(f"✅ 成功注册 MCP 插件: {plugin_name}")
+            logger.success(f"成功注册 MCP 插件: {plugin_name}")
 
         except json.JSONDecodeError as e:
-            print(f"❌ Manifest JSON 格式错误 {manifest_path}: {e}")
+            logger.error(f"Manifest JSON 格式错误 {manifest_path}: {e}")
         except Exception as e:
-            print(f"❌ 加载插件时发生未知错误 {manifest_path}: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception(f"加载插件时发生未知错误 {manifest_path}")
 
     def get_plugin(self, name: str) -> Optional[Dict[str, Any]]:
         """获取指定名称的插件"""
