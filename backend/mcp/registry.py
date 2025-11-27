@@ -124,12 +124,7 @@ class MCPRegistry:
         return {
             "name": name,
             "description": manifest.get('description', ''),
-            "version": manifest.get('version', '1.0.0'),
-            "display_name": manifest.get('displayName', name),
-            "author": manifest.get('author', 'Unknown'),
-            "capabilities": manifest.get('capabilities', {}),
-            "input_schema": manifest.get('inputSchema', {}),
-            "output_schema": manifest.get('outputSchema', {})
+            "input_schema": manifest.get('inputSchema', {})
         }
 
     def get_statistics(self) -> Dict[str, Any]:

@@ -1,26 +1,9 @@
 {
   "name": "SearchAgent",
-  "displayName": "网页搜索Agent",
-  "version": "1.0.0",
   "description": "基于 SerpApi 的智能网页搜索工具。能够搜索实时信息、事实数据,优先返回直接答案或知识图谱信息。",
-  "author": "01-python",
-  "agentType": "mcp",
   "entryPoint": {
     "module": "backend.mcp.plugins.search.search_agent",
     "class": "SearchAgent"
-  },
-  "communication": {
-    "protocol": "function_call",
-    "timeout": 30000
-  },
-  "capabilities": {
-    "invocationCommands": [
-      {
-        "command": "search",
-        "description": "执行网页搜索,返回最相关的搜索结果。优先返回答案框、知识图谱或前三条有机结果。",
-        "example": "{\"query\": \"英伟达最新的GPU型号是什么\"}"
-      }
-    ]
   },
   "inputSchema": {
     "type": "object",
@@ -33,30 +16,6 @@
     "required": [
       "query"
     ]
-  },
-  "outputSchema": {
-    "type": "object",
-    "properties": {
-      "status": {
-        "type": "string",
-        "description": "状态: success/error"
-      },
-      "result": {
-        "type": "string",
-        "description": "搜索结果文本"
-      },
-      "error": {
-        "type": "string",
-        "description": "错误信息(如果有)"
-      }
-    }
-  },
-  "dependencies": [
-    "google-search-results",
-    "python-dotenv"
-  ],
-  "configSchema": {
-    "SERPAPI_API_KEY": "string"
   }
 }
 
