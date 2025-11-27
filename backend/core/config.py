@@ -1,11 +1,9 @@
-"""配置管理"""
 import os
 from typing import Optional, Dict, Any
 from pydantic import BaseModel
 
-
 class Config(BaseModel):
-    """HelloAgents配置类"""
+    """配置管理"""
 
     # LLM配置
     default_model: str = "gpt-3.5-turbo"

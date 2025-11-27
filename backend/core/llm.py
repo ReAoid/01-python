@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import List, Generator, Union, Dict, Any
-from backend.core.memory.message import Message
+from typing import List, Generator
+from backend.core.message import Message
 
-class LLMInterface(ABC):
-    """Abstract base class for LLM providers."""
+class Llm(ABC):
+    """Llm 基类"""
 
     @abstractmethod
     def generate(self, messages: List[Message], **kwargs) -> Message:
