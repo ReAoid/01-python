@@ -1,19 +1,20 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
-from backend.core.llm import LLMInterface
+from backend.core.llm import Llm
 from backend.core.message import Message
 from backend.core.config import Config
+
 
 class Agent(ABC):
     """Agent基类"""
 
     def __init__(
-        self,
-        name: str,
-        llm: LLMInterface,
-        system_prompt: Optional[str] = None,
-        config: Optional[Config] = None
+            self,
+            name: str,
+            llm: Llm,
+            system_prompt: Optional[str] = None,
+            config: Optional[Config] = None
     ):
         self.name = name
         self.llm = llm

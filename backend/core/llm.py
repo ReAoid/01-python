@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List, Generator
 from backend.core.message import Message
 
+
 class Llm(ABC):
     """Llm 基类"""
 

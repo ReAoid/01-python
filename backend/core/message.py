@@ -38,13 +38,16 @@ class SystemMessage(Message):
     def __init__(self, content: str, **kwargs):
         super().__init__(content=content, role="system", **kwargs)
 
+
 class UserMessage(Message):
     def __init__(self, content: str, **kwargs):
         super().__init__(content=content, role="user", **kwargs)
 
+
 class AssistantMessage(Message):
     def __init__(self, content: str, **kwargs):
         super().__init__(content=content, role="assistant", **kwargs)
+
 
 class ToolMessage(Message):
     def __init__(self, content: str, tool_call_id: str, **kwargs):

@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 
+
 class ToolParameter(BaseModel):
     """工具参数定义"""
     name: str
@@ -9,6 +10,7 @@ class ToolParameter(BaseModel):
     description: str
     required: bool = True
     default: Any = None
+
 
 class Tool(ABC):
     """工具基类"""
