@@ -15,7 +15,7 @@ from loguru import logger
 class MCPRegistry:
     """MCP 插件注册中心"""
 
-    def __init__(self, plugin_dir: str = "backend/mcp/plugins"):
+    def __init__(self, plugin_dir: str = "backend/core/mcp/plugins"):
         self.plugin_dir = plugin_dir
         self.registry: Dict[str, Dict[str, Any]] = {}
         self.manifest_cache: Dict[str, Dict[str, Any]] = {}
