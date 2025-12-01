@@ -5,8 +5,8 @@ MCP 管理器
 
 from typing import Dict, Any, List, Optional
 from loguru import logger
-from backend.mcp.registry import MCPRegistry, get_registry
-from backend.mcp.adapter import MCPAdapterTool
+from backend.core.mcp.registry import get_registry
+from backend.core.mcp.adapter import MCPAdapterTool
 
 
 class MCPManager:
