@@ -29,7 +29,7 @@ class MemoryManager:
         self.short_term = ShortTermMemory()
         
         # 确定 Embedding 模型
-        self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+        self.embedding_model = os.getenv("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-8B")
         
         # 定义 embedding 函数
         def openai_embedding_func(text: str) -> List[float]:
