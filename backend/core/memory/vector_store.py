@@ -4,6 +4,8 @@ import numpy as np
 from typing import List, Dict, Any, Callable, Optional
 from loguru import logger
 
+from backend.utils.config_manager import get_core_config
+
 class VectorStore:
     """
     轻量级向量存储实现。
@@ -15,7 +17,7 @@ class VectorStore:
     3. 索引优化：对于大规模数据，添加索引机制 (如 HNSW) 以加速检索。
     """
 
-    def __init__(self, file_path: str = "memory_store.json", embedding_func: Optional[Callable[[str], List[float]]] = None):
+    def __init__(self, file_path: str = None, embedding_func: Optional[Callable[[str], List[float]]] = None):
         """
         初始化向量存储。
 
@@ -23,6 +25,15 @@ class VectorStore:
             file_path: 存储数据的文件路径
             embedding_func: 用于生成文本向量的函数，接收字符串返回浮点数列表
         """
+        if file_path is None:
+            config = get_core_config()
+            file_path = config.get("MEMORY_STORE_PATH")
+            
+            # 确保存储目录存在
+            store_dir = os.path.dirname(file_path)
+            if store_dir and not os.path.exists(store_dir):
+                os.makedirs(store_dir)
+
         self.file_path = file_path
         self.embedding_func = embedding_func
         self.documents: List[Dict[str, Any]] = []

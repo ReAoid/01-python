@@ -17,7 +17,7 @@ class MemoryManager:
     2. 多租户支持：支持多用户/多会话隔离 (Session/User isolation)。
     """
 
-    def __init__(self, llm: Llm, vector_store_path: str = "memory_store.json"):
+    def __init__(self, llm: Llm, vector_store_path: str = None):
         """
         初始化记忆管理器。
 
@@ -28,7 +28,6 @@ class MemoryManager:
         self.llm = llm
         self.short_term = ShortTermMemory()
         
-        # 确定 Embedding 模型
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-8B")
         
         # 定义 embedding 函数
