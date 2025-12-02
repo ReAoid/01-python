@@ -4,8 +4,8 @@ from loguru import logger
 from backend.core.message import Message
 from backend.core.llm import Llm
 from backend.openai_llm import OpenaiLlm
-from backend.core.memory.short_term import ShortTermMemory
-from backend.core.memory.vector_store import VectorStore
+from backend.utils.memory.short_term import ShortTermMemory
+from backend.utils.memory.vector_store import VectorStore
 
 class MemoryManager:
     """

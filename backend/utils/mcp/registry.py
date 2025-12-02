@@ -15,7 +15,7 @@ from loguru import logger
 class MCPRegistry:
     """MCP 插件注册中心"""
 
-    def __init__(self, plugin_dir: str = "backend/core/mcp/plugins"):
+    def __init__(self, plugin_dir: str = "backend/utils/mcp/plugins"):
         self.plugin_dir = plugin_dir
         self.registry: Dict[str, Dict[str, Any]] = {}
         self.manifest_cache: Dict[str, Dict[str, Any]] = {}
@@ -139,8 +139,8 @@ _registry_instance: Optional[MCPRegistry] = None
 # 默认插件目录（使用绝对路径）
 import os
 _DEFAULT_PLUGIN_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "backend", "mcp", "plugins"
+    os.path.dirname(__file__),
+    "plugins"
 )
 
 
@@ -148,7 +148,7 @@ def get_registry() -> MCPRegistry:
     """
     获取全局 Registry 单例
     
-    使用固定的插件目录: backend/mcp/plugins
+    使用固定的插件目录: backend/utils/mcp/plugins
     这是一个真正的单例，不接受参数，每次都返回同一个实例
     """
     global _registry_instance

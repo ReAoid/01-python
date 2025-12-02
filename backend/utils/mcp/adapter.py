@@ -7,7 +7,7 @@ import asyncio
 from typing import Dict, Any, List
 from loguru import logger
 from backend.core.tool import Tool, ToolParameter
-from backend.core.mcp.registry import MCPRegistry
+from backend.utils.mcp.registry import MCPRegistry
 
 
 class MCPAdapterTool(Tool):

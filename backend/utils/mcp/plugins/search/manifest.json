@@ -2,7 +2,7 @@
   "name": "SearchAgent",
   "description": "基于 SerpApi 的智能网页搜索工具。能够搜索实时信息、事实数据,优先返回直接答案或知识图谱信息。",
   "entryPoint": {
-    "module": "backend.mcp.plugins.search.search_agent",
+    "module": "backend.utils.mcp.plugins.search.search_agent",
     "class": "SearchAgent"
   },
   "inputSchema": {

@@ -5,8 +5,8 @@ MCP 管理器
 
 from typing import Dict, Any, List, Optional
 from loguru import logger
-from backend.core.mcp.registry import get_registry
-from backend.core.mcp.adapter import MCPAdapterTool
+from backend.utils.mcp.registry import get_registry
+from backend.utils.mcp.adapter import MCPAdapterTool
 
 
 class MCPManager:
@@ -137,8 +137,8 @@ _manager_instance: Optional[MCPManager] = None
 # 默认插件目录（使用绝对路径）
 import os
 _DEFAULT_PLUGIN_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "backend", "mcp", "plugins"
+    os.path.dirname(__file__),
+    "plugins"
 )
 
 
@@ -146,7 +146,7 @@ def get_mcp_manager(auto_setup_logger: bool = True) -> MCPManager:
     """
     获取全局 MCP Manager 单例
     
-    使用固定的插件目录: backend/mcp/plugins
+    使用固定的插件目录: backend/utils/mcp/plugins
     这是一个真正的单例，不接受参数，每次都返回同一个实例
     
     Args:
