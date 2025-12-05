@@ -30,3 +30,12 @@ EMBEDDING_BASE_URL="模型请求地址"
 ## SERPAPI搜索工具
 SERPAPI_API_KEY="serpapi 的调用 apikey"
 ```
+
+# 待执行计划
+- [x] 初始化项目
+- [x] 创建 core 文件夹
+- [x] 构建基础 mcp 框架
+- [x] 构建基础 memory 框架
+- [ ] 构建基础 chat 流程（Session 管理）
+- [ ] 构建基础 agent 框架
+- [ ] 热切换Session（文本模型根据轮数+Token来自动切换，语音和视频根据连接时间例如60s来自动切换）切换时会总结历史记录
