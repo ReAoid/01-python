@@ -249,6 +249,7 @@ class ConfigManager:
         llm_cfg = json_config.get('llm', {})
         sys_cfg = json_config.get('system', {})
         mem_cfg = json_config.get('memory', {})
+        api_cfg = json_config.get('api', {})
         
         def get_val(env_key, json_val, type_func=str):
             env_val = os.getenv(env_key)
@@ -261,12 +262,17 @@ class ConfigManager:
         return {
             'LLM_MODEL_ID': get_val("LLM_MODEL_ID", llm_cfg.get('default_model')) or "gpt-3.5-turbo",
             'LLM_PROVIDER': get_val("LLM_PROVIDER", llm_cfg.get('default_provider')) or "openai",
+            'LLM_API_KEY': get_val("LLM_API_KEY", api_cfg.get('llm_api_key')),
+            'LLM_BASE_URL': get_val("LLM_BASE_URL", api_cfg.get('llm_base_url')),
+            'LLM_TIMEOUT': get_val("LLM_TIMEOUT", api_cfg.get('llm_timeout'), int) or 60,
             'TEMPERATURE': get_val("TEMPERATURE", llm_cfg.get('temperature'), float) or 0.7,
             'MAX_TOKENS': get_val("MAX_TOKENS", llm_cfg.get('max_tokens'), int),
             'DEBUG': get_val("DEBUG", sys_cfg.get('debug'), bool) or False,
             'LOG_LEVEL': get_val("LOG_LEVEL", sys_cfg.get('log_level')) or "INFO",
             'MAX_HISTORY_LENGTH': get_val("MAX_HISTORY_LENGTH", mem_cfg.get('max_history_length'), int) or 100,
-            'MEMORY_STORE_PATH': str(self.get_memory_path("memory_store.json"))
+            'MEMORY_STORE_PATH': str(self.get_memory_path("memory_store.json")),
+            'EMBEDDING_MODEL': get_val("EMBEDDING_MODEL", mem_cfg.get('embedding_model')) or "Qwen/Qwen3-Embedding-8B",
+            'SERPAPI_API_KEY': get_val("SERPAPI_API_KEY", api_cfg.get('serpapi_api_key'))
         }
 
 

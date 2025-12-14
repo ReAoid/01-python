@@ -243,13 +243,10 @@ class SessionManager:
         """
         # 重新加载配置
         cfg = self.config_manager.get_core_config()
-        api_key = asyncio.run(self._get_api_key_async(cfg)) if asyncio.iscoroutinefunction(self._get_api_key_async) else self._get_api_key_sync(cfg)
+        api_key = cfg.get("LLM_API_KEY")
         
-        # 简化获取 key
         if not api_key:
-             # Fallback to env via config manager logic if possible, or just mock
-             import os
-             api_key = os.getenv("LLM_API_KEY")
+            raise ValueError("LLM_API_KEY 未在配置中找到，请检查配置文件或环境变量")
 
         llm = TextLLMClient(
             api_key=api_key,
@@ -258,15 +255,6 @@ class SessionManager:
         )
         await llm.connect()
         return llm
-
-    def _get_api_key_sync(self, cfg):
-         # 这里的 cfg 是 dict
-         # 尝试从 key 中获取，或者从环境变量
-         import os
-         return os.getenv("LLM_API_KEY") 
-
-    async def _get_api_key_async(self, cfg):
-        return self._get_api_key_sync(cfg)
 
     async def _handle_interrupt(self):
         """用户打断"""

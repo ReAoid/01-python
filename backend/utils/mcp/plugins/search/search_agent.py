@@ -6,6 +6,7 @@ import os
 import json
 from typing import Dict, Any
 from loguru import logger
+from backend.utils.config_manager import get_core_config
 
 
 class SearchAgent:
@@ -13,7 +14,9 @@ class SearchAgent:
 
     def __init__(self):
         """初始化搜索 Agent"""
-        self.api_key = os.getenv("SERPAPI_API_KEY")
+        # 从配置管理器读取 SERPAPI_API_KEY
+        config = get_core_config()
+        self.api_key = config.get("SERPAPI_API_KEY")
         if not self.api_key:
             logger.warning("SERPAPI_API_KEY 未配置,搜索功能可能无法使用")
 

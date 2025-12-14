@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from backend.core.llm import Llm
 from backend.core.message import Message
-from backend.core.config import Config
+from backend.utils.config_manager import get_core_config
 
 
 class Agent(ABC):
@@ -14,12 +14,13 @@ class Agent(ABC):
             name: str,
             llm: Llm,
             system_prompt: Optional[str] = None,
-            config: Optional[Config] = None
+            config: Optional[Dict[str, Any]] = None
     ):
         self.name = name
         self.llm = llm
         self.system_prompt = system_prompt
-        self.config = config or Config()
+        # 使用 config_manager 读取配置，允许传入自定义配置覆盖
+        self.config = config or get_core_config()
         self._history: List[Message] = []
 
     @abstractmethod
