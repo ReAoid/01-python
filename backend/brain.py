@@ -21,7 +21,7 @@ class InputMode(Enum):
 
 # --- 核心 Session Manager ---
 
-class UniversalSessionManager:
+class SessionManager:
     def __init__(self, message_queue, config_loader=None):
         # 如果未提供 config_loader，使用默认的 ConfigManager
         self.config_manager = config_loader or get_config_manager()
