@@ -10,3 +10,11 @@ loguru
 pydantic
 # 向量计算
 numpy
+# TTS
+genie-tts
+# 音频处理
+pyaudio
+# 异步 HTTP 客户端
+aiohttp
+# WebSocket 支持
+websockets
