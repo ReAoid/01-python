@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple
 from loguru import logger
 from backend.core.message import Message
 from backend.core.llm import Llm
-from backend.services.openai_llm import OpenaiLlm
+from backend.utils.openai_llm import OpenaiLlm
 from backend.utils.memory.short_term import ShortTermMemory
 from backend.utils.memory.vector_store import VectorStore
 from backend.utils.config_manager import get_core_config

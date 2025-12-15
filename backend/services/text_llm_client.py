@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from typing import List, Dict, Optional, Callable
-from backend.services.openai_llm import OpenaiLlm
+from backend.utils.openai_llm import OpenaiLlm
 from backend.core.message import Message
 
 logger = logging.getLogger(__name__)
