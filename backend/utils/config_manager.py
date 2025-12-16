@@ -22,7 +22,6 @@ except ImportError:
 class ConfigManager:
     """
     跨平台配置文件管理器
-    
     自动管理用户文档目录下的配置文件和记忆文件。
     支持配置迁移、自动创建目录等功能。
     遵循单例模式。

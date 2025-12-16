@@ -1,6 +1,6 @@
 import os
-from typing import List, Generator, Dict
-from openai import OpenAI
+from typing import List, Generator, Dict, AsyncGenerator
+from openai import OpenAI, AsyncOpenAI
 from loguru import logger
 from backend.core.message import Message
 from backend.core.llm import Llm
@@ -34,6 +34,7 @@ class OpenaiLlm(Llm):
             raise ValueError("模型ID、API密钥和服务地址必须被提供或在配置文件/环境变量中定义。")
         
         self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
+        self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
 
     def _convert_messages(self, messages: List[Message]) -> List[Dict[str, str]]:
         """
@@ -58,7 +59,9 @@ class OpenaiLlm(Llm):
         Returns:
             Message: 完整的响应消息
         """
-        temperature = kwargs.get("temperature", 0)
+        config = get_core_config()
+        default_temp = config.get("TEMPERATURE", 0.7)
+        temperature = kwargs.get("temperature", default_temp)
         
         logger.info(f"正在调用 {self.model} 模型(非流式)...")
         
@@ -92,7 +95,9 @@ class OpenaiLlm(Llm):
         Yields:
             str: 流式生成的文本片段
         """
-        temperature = kwargs.get("temperature", 0)
+        config = get_core_config()
+        default_temp = config.get("TEMPERATURE", 0.7)
+        temperature = kwargs.get("temperature", default_temp)
         
         logger.info(f"正在调用 {self.model} 模型(流式)...")
         
@@ -113,6 +118,45 @@ class OpenaiLlm(Llm):
                     yield content
             
             logger.info("流式响应完成")
+            
+        except Exception as e:
+            logger.error(f"调用LLM API时发生错误: {e}")
+            raise
+
+    async def astream(self, messages: List[Message], **kwargs) -> AsyncGenerator[str, None]:
+        """
+        异步流式生成响应。
+        
+        Args:
+            messages: 消息列表
+            **kwargs: 其他参数(如 temperature, max_tokens 等)
+            
+        Yields:
+            str: 流式生成的文本片段
+        """
+        config = get_core_config()
+        default_temp = config.get("TEMPERATURE", 0.7)
+        temperature = kwargs.get("temperature", default_temp)
+        
+        logger.info(f"正在异步调用 {self.model} 模型(流式)...")
+        
+        try:
+            api_messages = self._convert_messages(messages)
+            response = await self.async_client.chat.completions.create(
+                model=self.model,
+                messages=api_messages,
+                temperature=temperature,
+                stream=True,
+                **{k: v for k, v in kwargs.items() if k not in ["temperature"]}
+            )
+            
+            logger.success("大语言模型开始异步流式响应")
+            async for chunk in response:
+                content = chunk.choices[0].delta.content or ""
+                if content:
+                    yield content
+            
+            logger.info("异步流式响应完成")
             
         except Exception as e:
             logger.error(f"调用LLM API时发生错误: {e}")
