@@ -23,16 +23,10 @@ class InputMode(Enum):
 
 class SessionManager:
     def __init__(self, message_queue, config_loader=None):
-        # 如果未提供 config_loader，使用默认的 ConfigManager
+        # 加载配置
         self.config_manager = config_loader or get_config_manager()
-        # 这里为了兼容 load() 接口，可能需要适配
-        # 假设 config_loader 有 load() 方法返回配置对象
-        # 或者直接使用 config_manager
-        
-        # 简单起见，我们直接用 config_manager.get_core_config()
-        # 但为了保留 reload 能力，我们需要保留 config_manager 引用
-        
-        self.queue = message_queue # 用于与 Agent/Monitor 通信
+        # 用于与 Agent/Monitor 通信
+        self.queue = message_queue
         
         # --- 管道组件 ---
         # 传入配置
@@ -68,19 +62,32 @@ class SessionManager:
         self.mode = mode
         self.session_start_time = time.time()
         
-        # 1. 启动外围设备 (ASR/TTS)
+        logger.info("🚀 Starting system components in parallel...")
+        start_time = time.time()
+        
+        tasks = []
+        
+        # 1. 启动 TTS
+        tasks.append(self.tts.start(on_audio=self._send_audio_to_frontend))
+        
+        # 2. 启动 ASR
         if mode == InputMode.AUDIO:
-            await self.asr.start(
+            tasks.append(self.asr.start(
                 on_transcript=self._handle_user_input, # ASR 转录结果 -> LLM
                 on_vad_trigger=self._handle_interrupt    # 用户打断 -> 停止生成
-            )
-        await self.tts.start(on_audio=self._send_audio_to_frontend)
+            ))
         
-        # 2. 启动核心 LLM (冷启动)
-        self.current_llm = await self._create_llm_session(is_renew=False)
+        # 3. 启动核心 LLM (冷启动)
+        async def start_llm():
+            self.current_llm = await self._create_llm_session(is_renew=False)
+            
+        tasks.append(start_llm())
+        
+        # 并行执行所有启动任务
+        await asyncio.gather(*tasks)
         
         self.is_active = True
-        print(f"System started in {mode} mode.")
+        logger.info(f"System started in {time.time() - start_time:.2f}s ({mode} mode).")
 
     async def stop(self):
         """系统停止"""
@@ -100,7 +107,7 @@ class SessionManager:
         """
         if not text or not text.strip(): return
         
-        # [关键] 如果正在后台预热新 Session，需要把这句话记下来！
+        # [关键] 后台预热新 Session，记录用户对话
         if self.is_preparing_renew:
             self.incremental_cache.append({"role": "user", "content": text})
             

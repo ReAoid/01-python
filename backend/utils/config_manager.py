@@ -274,6 +274,43 @@ class ConfigManager:
             'EMBEDDING_MODEL': get_val("EMBEDDING_MODEL", mem_cfg.get('embedding_model')) or "Qwen/Qwen3-Embedding-8B",
             'SERPAPI_API_KEY': get_val("SERPAPI_API_KEY", api_cfg.get('serpapi_api_key'))
         }
+    
+    def get_tts_config(self) -> dict:
+        """
+        获取 TTS 配置
+        整合了 core_config.json 和环境变量
+        """
+        json_config = self.load_json_config('core_config.json', default_value={})
+        tts_cfg = json_config.get('tts', {})
+        server_cfg = tts_cfg.get('server', {})
+        
+        def get_val(env_key, json_val, type_func=str):
+            env_val = os.getenv(env_key)
+            if env_val is not None:
+                if type_func == bool:
+                    return env_val.lower() == "true"
+                return type_func(env_val)
+            return json_val
+        
+        # 处理 genie_data_dir 路径
+        genie_data_dir = get_val("GENIE_DATA_DIR", tts_cfg.get('genie_data_dir'))
+        if genie_data_dir and not Path(genie_data_dir).is_absolute():
+            # 如果是相对路径，转换为绝对路径（相对于项目根目录）
+            genie_data_dir = str(self.project_root / genie_data_dir)
+        elif not genie_data_dir:
+            # 如果没有配置，使用默认值
+            genie_data_dir = str(self.project_root / 'config' / 'tts')
+        
+        return {
+            'enabled': get_val("TTS_ENABLED", tts_cfg.get('enabled'), bool) or True,
+            'engine': get_val("TTS_ENGINE", tts_cfg.get('engine')) or "genie",
+            'genie_data_dir': genie_data_dir,
+            'server_host': get_val("TTS_SERVER_HOST", server_cfg.get('host')) or "127.0.0.1",
+            'server_port': get_val("TTS_SERVER_PORT", server_cfg.get('port'), int) or 8000,
+            'auto_start': get_val("TTS_AUTO_START", server_cfg.get('auto_start'), bool) or False,
+            'active_character': get_val("TTS_ACTIVE_CHARACTER", tts_cfg.get('active_character')) or "feibi",
+            'language': get_val("TTS_LANGUAGE", tts_cfg.get('language')) or "zh"
+        }
 
 
 # 全局单例

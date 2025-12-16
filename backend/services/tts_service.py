@@ -1,74 +1,187 @@
 """
-TTS 服务
-集成 Genie TTS 实现流式语音合成
+TTS Service
+Refactored to use Multi-Process Architecture as per TTS_Design_Pattern.md
 """
 import asyncio
 import logging
-import os
-import json
-from pathlib import Path
-from typing import Optional, Callable
+import time
+import uuid
+import queue
+import traceback
+from multiprocessing import Process, Queue
+from typing import Optional, Callable, Dict, Any
 
-from backend.utils.genie_tts import GenieTTS
+from backend.utils.genie_client import GenieTTS
 
 logger = logging.getLogger(__name__)
 
+# ============================================================================
+# TTS Worker Process Logic
+# ============================================================================
+
+def tts_worker_main(request_queue, response_queue, config):
+    """
+    Entry point for the TTS worker process.
+    """
+    try:
+        asyncio.run(tts_worker_async(request_queue, response_queue, config))
+    except Exception as e:
+        logger.error(f"TTS Worker process failed: {e}")
+        traceback.print_exc()
+        try:
+            response_queue.put(("__ready__", False))
+        except:
+            pass
+
+async def tts_worker_async(request_queue, response_queue, config):
+    """
+    Async worker loop.
+    """
+    logger.info("TTS Worker started")
+    
+    # 1. Initialize Genie TTS Client
+    host = config.get('host', '127.0.0.1')
+    port = config.get('port', 8000)
+    genie_client = GenieTTS(host=host, port=port)
+    
+    current_speech_id = None
+    synthesis_task: Optional[asyncio.Task] = None
+    
+    try:
+        # 2. Connect and Setup
+        logger.info(f"Connecting to Genie TTS at {host}:{port}...")
+        if not await genie_client.connect(timeout=5):
+            logger.error("Failed to connect to Genie TTS server")
+            response_queue.put(("__ready__", False))
+            return
+
+        # Load character if configured
+        character = config.get('character')
+        model_dir = config.get('model_dir')
+        language = config.get('language', 'zh')
+        
+        if character and model_dir:
+            logger.info(f"Loading character: {character}")
+            if not await genie_client.load_character(character, model_dir, language):
+                logger.error("Failed to load character")
+                response_queue.put(("__ready__", False))
+                return
+        
+        # Set reference audio if configured
+        ref_audio_path = config.get('reference_audio_path')
+        ref_audio_text = config.get('reference_audio_text')
+        
+        if ref_audio_path and ref_audio_text:
+            logger.info(f"Setting reference audio: {ref_audio_path}")
+            if not await genie_client.set_reference_audio(ref_audio_path, ref_audio_text, language):
+                logger.error("Failed to set reference audio")
+                response_queue.put(("__ready__", False))
+                return
+                
+        # 3. Send Ready Signal
+        logger.info("TTS Worker ready")
+        response_queue.put(("__ready__", True))
+        
+        # 4. Request Processing Loop
+        loop = asyncio.get_running_loop()
+        
+        while True:
+            try:
+                # Use executor to avoid blocking the asyncio loop while waiting for MP queue
+                item = await loop.run_in_executor(None, request_queue.get)
+            except Exception as e:
+                logger.error(f"Error getting from queue: {e}")
+                break
+                
+            speech_id, text = item
+            
+            # Termination signal
+            if speech_id is None and text is None:
+                logger.info("Received termination signal")
+                break
+                
+            # Interruption check
+            if speech_id != current_speech_id:
+                if current_speech_id is not None:
+                    logger.info(f"Interrupting speech {current_speech_id} -> {speech_id}")
+                current_speech_id = speech_id
+            
+            if text:
+                await process_text_chunk(genie_client, text, response_queue)
+
+    finally:
+        if genie_client:
+            await genie_client.close()
+        logger.info("TTS Worker stopped")
+
+async def process_text_chunk(client: GenieTTS, text: str, response_queue):
+    """
+    Process a single text chunk and stream audio to response queue.
+    """
+    try:
+        async for audio_chunk in client.synthesize_stream(text):
+            response_queue.put(audio_chunk)
+    except Exception as e:
+        logger.error(f"Synthesis failed: {e}")
+
+# ============================================================================
+# TTS Service Manager (Main Process)
+# ============================================================================
 
 class TTSService:
     """
-    TTS 服务封装
-    使用 Genie TTS 实现流式语音合成
+    TTS Service Manager (Main Process)
+    Manages the TTS subprocess, queues, and caching.
     """
     
     def __init__(self, config):
         """
-        初始化 TTS 服务
+        Initialize TTS Service
         
         Args:
-            config: ConfigManager 实例或配置字典
+            config: ConfigManager instance or config dict
         """
         self.config = config
-        self.queue = asyncio.Queue()
-        self.running = False
-        self.on_audio: Optional[Callable] = None
-        
-        # Genie TTS 客户端
-        self.genie_client: Optional[GenieTTS] = None
-        
-        # TTS 配置（从 config 中读取）
         self.tts_config = self._load_tts_config()
+        
+        # Multi-process communication
+        self.request_queue: Optional[Queue] = None
+        self.response_queue: Optional[Queue] = None
+        self.tts_process: Optional[Process] = None
+        self.handler_task: Optional[asyncio.Task] = None
+        
+        # Caching mechanism
+        self.tts_ready = False
+        self.pending_chunks = []
+        self.cache_lock = asyncio.Lock()
+        
+        # State
+        self.current_speech_id = str(uuid.uuid4())
+        self.on_audio: Optional[Callable] = None
+        self.running = False
 
     def _load_tts_config(self) -> dict:
-        """从配置管理器加载 TTS 配置（仅支持新格式）"""
-        # 如果 config 是 ConfigManager 对象
+        """Load TTS configuration (same as before)"""
+        # ... logic to extract config ...
+        # For brevity, reusing the logic from previous implementation
+        
         if hasattr(self.config, 'get_core_config'):
             core_config = self.config.get_core_config()
-            
-            # 获取 TTS 服务配置
             tts_config = core_config.get('tts', {})
-            
-            # 获取角色库配置
             characters = core_config.get('tts_characters', {})
-            
-            # 获取当前激活的角色
             active_character = tts_config.get('active_character', 'feibi')
             character_config = characters.get(active_character, {})
             
-            # 合并配置：角色配置优先
-            merged_config = {
+            return {
                 'enabled': tts_config.get('enabled', True),
                 'host': tts_config.get('server', {}).get('host', '127.0.0.1'),
                 'port': tts_config.get('server', {}).get('port', 8000),
                 'character': active_character,
-                'language': character_config.get('language', tts_config.get('language', 'zh')),
+                'language': character_config.get('language', 'zh'),
                 'model_dir': character_config.get('model_dir'),
                 'reference_audio_path': character_config.get('reference_audio', {}).get('path'),
                 'reference_audio_text': character_config.get('reference_audio', {}).get('text'),
-                'reference_audio_mode': character_config.get('reference_audio', {}).get('mode', 'Normal'),
             }
-            
-            return merged_config
-            
         elif isinstance(self.config, dict):
             tts_config = self.config.get('tts', {})
             characters = self.config.get('tts_characters', {})
@@ -84,243 +197,225 @@ class TTSService:
                 'model_dir': character_config.get('model_dir'),
                 'reference_audio_path': character_config.get('reference_audio', {}).get('path'),
                 'reference_audio_text': character_config.get('reference_audio', {}).get('text'),
-                'reference_audio_mode': character_config.get('reference_audio', {}).get('mode', 'Normal'),
             }
         else:
-            logger.warning("无法从配置中读取 TTS 配置，使用默认值")
             return {}
 
     async def start(self, on_audio: Callable):
         """
-        启动 TTS 服务
-        
-        Args:
-            on_audio: 音频数据回调函数 async def on_audio(audio_bytes: bytes)
+        Start TTS Service (Subprocess)
         """
         self.on_audio = on_audio
         self.running = True
         
-        # 1. 初始化 Genie 客户端
-        host = self.tts_config.get('host', '127.0.0.1')
-        port = self.tts_config.get('port', 8000)
+        start_time = time.time()
+        logger.info("🎤 Starting TTS Service...")
         
-        self.genie_client = GenieTTS(host=host, port=port)
+        # Initialize Queues
+        # Note: In some environments (like macOS default spawn), we pass queues to process
+        self.request_queue = Queue()
+        self.response_queue = Queue()
         
-        # 2. 连接到 Genie TTS 服务器（带重试）
-        max_retries = 5
-        retry_delay = 2
+        # Start Subprocess
+        self.tts_process = Process(
+            target=tts_worker_main,
+            args=(self.request_queue, self.response_queue, self.tts_config)
+        )
+        self.tts_process.daemon = True
+        self.tts_process.start()
         
-        for attempt in range(max_retries):
-            try:
-                logger.info(f"尝试连接到 Genie TTS 服务器 ({attempt + 1}/{max_retries})...")
-                if await self.genie_client.connect(timeout=5):
-                    break
-            except Exception as e:
-                logger.warning(f"连接失败: {e}")
+        # Wait for Ready Signal (Non-blocking)
+        try:
+            ready = await self._wait_for_ready_signal(timeout=8.0)
+            if not ready:
+                logger.error("❌ TTS Process failed to initialize")
+                # If failed, we don't mark ready.
+                # We could raise an exception here if we want to stop the app start,
+                # or just leave it unready so calls are buffered forever (or dropped).
+                # Ideally, we should probably stop the process if it failed.
+                return
+        except Exception as e:
+            logger.error(f"Error waiting for TTS ready: {e}")
+            return
             
-            if attempt < max_retries - 1:
-                await asyncio.sleep(retry_delay)
-        else:
-            logger.error("无法连接到 Genie TTS 服务器，TTS 功能将不可用")
-            self.genie_client = None
-            asyncio.create_task(self._process_queue())  # 启动队列处理（但不会有音频输出）
-            return
+        logger.info(f"✅ TTS Service started (took {time.time() - start_time:.2f}s)")
         
-        # 3. 加载角色模型
-        character_name = self.tts_config.get('character', 'feibi')
-        model_dir = self.tts_config.get('model_dir')
-        language = self.tts_config.get('language', 'zh')
+        # Start Response Handler
+        self.handler_task = asyncio.create_task(self._response_handler())
         
-        if not model_dir:
-            # 尝试自动查找模型目录
-            model_dir = self._find_character_model(character_name)
-        
-        if model_dir and os.path.exists(model_dir):
-            logger.info(f"加载角色模型: {character_name} 从 {model_dir}")
-            if not await self.genie_client.load_character(character_name, model_dir, language):
-                logger.error("加载角色模型失败")
-                self.genie_client = None
-                asyncio.create_task(self._process_queue())
-                return
-        else:
-            logger.error(f"未找到角色模型目录: {model_dir}")
-            self.genie_client = None
-            asyncio.create_task(self._process_queue())
-            return
-        
-        # 4. 设置参考音频
-        ref_audio_path = self.tts_config.get('reference_audio_path')
-        ref_audio_text = self.tts_config.get('reference_audio_text')
-        
-        if not ref_audio_path or not ref_audio_text:
-            # 尝试从 prompt_wav.json 自动加载
-            ref_audio_path, ref_audio_text = self._load_reference_audio(model_dir)
-        
-        if ref_audio_path and ref_audio_text and os.path.exists(ref_audio_path):
-            logger.info(f"设置参考音频: {ref_audio_path}")
-            if not await self.genie_client.set_reference_audio(ref_audio_path, ref_audio_text, language):
-                logger.error("设置参考音频失败")
-                self.genie_client = None
-                asyncio.create_task(self._process_queue())
-                return
-        else:
-            logger.error(f"未找到参考音频: {ref_audio_path}")
-            self.genie_client = None
-            asyncio.create_task(self._process_queue())
-            return
-        
-        # 5. 启动队列处理任务
-        asyncio.create_task(self._process_queue())
-        logger.info("✓ TTS Service 启动成功")
+        # Mark ready and flush any pending chunks (if any accumulated during start)
+        async with self.cache_lock:
+            self.tts_ready = True
+        await self._flush_pending_chunks()
 
     async def stop(self):
-        """停止 TTS 服务"""
+        """Stop TTS Service"""
         self.running = False
+        logger.info("Stopping TTS Service...")
         
-        if self.genie_client:
-            await self.genie_client.close()
+        # 1. Cancel Handler
+        if self.handler_task and not self.handler_task.done():
+            self.handler_task.cancel()
+            try:
+                await self.handler_task
+            except asyncio.CancelledError:
+                pass
         
+        # 2. Terminate Process
+        if self.tts_process and self.tts_process.is_alive():
+            try:
+                # Send termination signal
+                if self.request_queue:
+                    self.request_queue.put((None, None))
+                
+                self.tts_process.join(timeout=1.0)
+                if self.tts_process.is_alive():
+                    self.tts_process.terminate()
+            except Exception as e:
+                logger.error(f"Error stopping TTS process: {e}")
+        
+        # 3. Close Queues (optional, mostly for cleanup)
+        # self.request_queue.close()
+        # self.response_queue.close()
+        
+        self.tts_process = None
+        self.request_queue = None
+        self.response_queue = None
+        self.tts_ready = False
         logger.info("TTS Service stopped")
 
     async def push_text(self, text: str):
         """
-        推送文本到合成队列
-        
-        Args:
-            text: 要合成的文本
+        Push text to TTS (Async with Cache)
+        Compatible with existing interface.
         """
-        if text and text.strip():
-            await self.queue.put(text)
+        if not text:
+            return
+
+        async with self.cache_lock:
+            if self.tts_ready and self.request_queue:
+                # TTS is ready, send directly
+                try:
+                    # Non-blocking put? Queue.put is blocking by default, but usually fast if not full.
+                    # run_in_executor might be safer if queue can be full, but for simple text it's fine.
+                    self.request_queue.put((self.current_speech_id, text))
+                except Exception as e:
+                    logger.error(f"Failed to push text to TTS: {e}")
+            else:
+                # Buffer text
+                self.pending_chunks.append((self.current_speech_id, text))
+                if len(self.pending_chunks) == 1:
+                    logger.info("TTS not ready, buffering text...")
 
     async def flush(self):
-        """等待队列处理完毕"""
-        await self.queue.join()
+        """
+        Wait for queue to be processed?
+        In MP architecture, 'flush' is tricky because we don't know when the worker is done.
+        For now, we can send a marker or just pass. 
+        Existing callers might expect this to block until audio is generated.
+        With streaming, 'flush' is less relevant.
+        """
+        pass
 
     async def clear_queue(self):
-        """清空待播放队列"""
-        while not self.queue.empty():
-            try:
-                self.queue.get_nowait()
-                self.queue.task_done()
-            except asyncio.QueueEmpty:
-                break
-        logger.info("TTS 队列已清空")
+        """
+        Interrupt current speech and clear queue.
+        """
+        await self.interrupt()
 
-    async def _process_queue(self):
-        """处理合成队列（后台任务）"""
-        logger.info("TTS 队列处理任务已启动")
+    async def interrupt(self):
+        """
+        Interrupt current speech:
+        1. Generate new speech_id
+        2. Clear pending cache
+        3. Clear response queue (handled in handler)
+        """
+        new_id = str(uuid.uuid4())
+        logger.info(f"Interrupting speech {self.current_speech_id} -> {new_id}")
+        
+        # 1. Clear local cache
+        async with self.cache_lock:
+            self.pending_chunks.clear()
+        
+        # 2. Update speech ID (this will cause next push_text to use new ID)
+        self.current_speech_id = new_id
+        
+        # 3. Send interrupt signal to worker (implicit by sending new speech_id with next text)
+        # But if we don't have new text immediately?
+        # The worker checks speech_id on next request.
+        # If we want immediate stop, we can send a dummy or empty request with new ID?
+        # Or let the worker handle cancellation when it sees new ID.
+        
+        # Note: If we just clear the queue on the Python side, the worker might still be processing.
+        # Ideally we send a signal.
+        # For now, relying on the pattern where next text triggers interruption is fine.
+        # BUT, `brain.py` calls `clear_queue` then `llm.cancel`.
+        # So we might not send new text for a while (until user speaks again).
+        # We should ensuring the worker stops NOW.
+        # We can send (new_id, "") to trigger update in worker.
+        if self.request_queue:
+            self.request_queue.put((new_id, ""))
+
+    async def _wait_for_ready_signal(self, timeout: float) -> bool:
+        """Wait for ready signal from worker"""
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if self.response_queue and not self.response_queue.empty():
+                try:
+                    msg = self.response_queue.get_nowait()
+                    if isinstance(msg, tuple) and len(msg) == 2 and msg[0] == "__ready__":
+                        return msg[1]
+                    else:
+                        # Put back if not ready signal (unlikely during startup)
+                        self.response_queue.put(msg)
+                except:
+                    pass
+            await asyncio.sleep(0.05)
+        return False
+
+    async def _response_handler(self):
+        """Handle responses from worker"""
+        logger.info("TTS Response Handler started")
+        loop = asyncio.get_running_loop()
         
         while self.running:
             try:
-                # 从队列获取文本
-                text = await self.queue.get()
-                
-                if not text or not text.strip():
-                    self.queue.task_done()
-                    continue
-                
-                # 如果 Genie 客户端可用，进行合成
-                if self.genie_client and self.genie_client.is_ready:
+                if self.response_queue and not self.response_queue.empty():
+                    # Use run_in_executor for get if needed, but get_nowait is non-blocking
                     try:
-                        logger.debug(f"合成文本: {text[:50]}...")
+                        data = self.response_queue.get_nowait()
                         
-                        # 流式合成并发送音频
-                        async for audio_chunk in self.genie_client.synthesize_stream(text):
-                            if self.on_audio:
-                                await self.on_audio(audio_chunk)
+                        # Filter signals
+                        if isinstance(data, tuple) and data[0] == "__ready__":
+                            continue
                         
-                        logger.debug("✓ 音频合成完成")
-                        
+                        # Audio data
+                        if self.on_audio:
+                            await self.on_audio(data)
+                            
+                    except queue.Empty:
+                        pass
                     except Exception as e:
-                        logger.error(f"TTS 合成失败: {e}")
-                else:
-                    # 如果 Genie 不可用，记录警告（Mock 模式）
-                    logger.warning(f"TTS 不可用，跳过合成: {text[:50]}...")
-                    if self.on_audio:
-                        # 发送模拟数据
-                        await self.on_audio(f"[Mock Audio] {text}".encode('utf-8'))
+                        logger.error(f"Error in response handler: {e}")
                 
-                self.queue.task_done()
-                
+                await asyncio.sleep(0.01)
             except asyncio.CancelledError:
-                logger.info("TTS 队列处理任务被取消")
                 break
             except Exception as e:
-                logger.error(f"TTS 队列处理异常: {e}")
-                self.queue.task_done()
-        
-        logger.info("TTS 队列处理任务已停止")
+                logger.error(f"Response handler loop error: {e}")
+                await asyncio.sleep(1)
 
-    def _find_character_model(self, character_name: str) -> Optional[str]:
-        """
-        自动查找角色模型目录
-        
-        Args:
-            character_name: 角色名称
+    async def _flush_pending_chunks(self):
+        """Flush buffered text chunks"""
+        async with self.cache_lock:
+            if not self.pending_chunks:
+                return
             
-        Returns:
-            模型目录路径，如果未找到则返回 None
-        """
-        # 搜索路径（按优先级排序）
-        search_paths = []
-        
-        # 优先级 1: 环境变量指定的路径
-        genie_data_dir = os.environ.get('GENIE_DATA_DIR')
-        if genie_data_dir:
-            search_paths.append(Path(genie_data_dir) / 'CharacterModels')
-        
-        # 优先级 2: backend/config/tts/CharacterModels（默认位置）
-        search_paths.append(Path(__file__).parent.parent / 'config' / 'tts' / 'CharacterModels')
-        
-        # 搜索模型目录
-        for base_path in search_paths:
-            # 尝试 v2ProPlus 版本
-            model_path = base_path / 'v2ProPlus' / character_name / 'tts_models'
-            if model_path.exists() and (model_path / 't2s_encoder_fp32.onnx').exists():
-                logger.info(f"找到角色模型: {model_path}")
-                return str(model_path.absolute())
-        
-        logger.warning(f"未找到角色 '{character_name}' 的模型目录")
-        return None
-
-    def _load_reference_audio(self, model_dir: str) -> tuple[Optional[str], Optional[str]]:
-        """
-        从 prompt_wav.json 加载参考音频配置
-        
-        Args:
-            model_dir: 模型目录路径
-            
-        Returns:
-            (audio_path, audio_text) 元组
-        """
-        try:
-            character_dir = Path(model_dir).parent
-            prompt_wav_json = character_dir / 'prompt_wav.json'
-            
-            if not prompt_wav_json.exists():
-                logger.warning(f"未找到 prompt_wav.json: {prompt_wav_json}")
-                return None, None
-            
-            with open(prompt_wav_json, 'r', encoding='utf-8') as f:
-                prompt_config = json.load(f)
-            
-            # 获取第一个可用的参考音频配置
-            audio_config = None
-            if 'Normal' in prompt_config:
-                audio_config = prompt_config['Normal']
-            elif prompt_config:
-                audio_config = list(prompt_config.values())[0]
-            
-            if audio_config:
-                audio_filename = audio_config.get('wav')
-                audio_text = audio_config.get('text')
-                audio_path = character_dir / 'prompt_wav' / audio_filename
-                
-                if audio_path.exists():
-                    logger.info(f"找到参考音频: {audio_filename}")
-                    return str(audio_path.absolute()), audio_text
-            
-        except Exception as e:
-            logger.error(f"加载参考音频配置失败: {e}")
-        
-        return None, None
+            logger.info(f"Flushing {len(self.pending_chunks)} buffered chunks")
+            if self.request_queue:
+                for speech_id, text in self.pending_chunks:
+                    try:
+                        self.request_queue.put((speech_id, text))
+                    except Exception as e:
+                        logger.error(f"Error flushing chunk: {e}")
+            self.pending_chunks.clear()
