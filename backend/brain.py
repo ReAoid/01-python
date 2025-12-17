@@ -17,13 +17,21 @@ logger = logging.getLogger(__name__)
 
 
 class InputMode(Enum):
-    """输入方式"""
-    AUDIO = "audio"  # 语音输入 (通过 ASR)
+    """
+    输入模式枚举。
+    定义系统接收用户输入的方式。
+    """
     TEXT = "text"  # 文本输入
+    AUDIO = "audio"  # 普通音频输入
+    REALTIME_AUDIO = "realtime_audio"  # 实时音频输入
+    VISION = "vision"  # 视觉系统输入
 
 
 class OutputMode(Enum):
-    """输出方式"""
+    """
+    输出模式枚举。
+    定义系统向用户返回响应的方式。
+    """
     TEXT_ONLY = "text_only"  # 仅输出文本
     TEXT_AND_AUDIO = "text_audio"  # 输出文本和音频 (TTS)
 
@@ -31,7 +39,25 @@ class OutputMode(Enum):
 # --- 核心 Session Manager ---
 
 class SessionManager:
-    def __init__(self, message_queue, config_loader=None):
+    """
+    会话管理器核心类。
+    负责管理 ASR、LLM、TTS 三大组件的协同工作,实现无缝的双 Session 热切换机制。
+    
+    主要功能:
+    - 管理输入输出管道 (ASR/TTS)
+    - 实现双 Session 架构,支持热切换
+    - 处理用户输入并生成响应
+    - 管理增量记忆缓存,防止切换时失忆
+    """
+    
+    def __init__(self, message_queue: asyncio.Queue, config_loader=None):
+        """
+        初始化会话管理器。
+        
+        Args:
+            message_queue: 用于与 Agent/Monitor 通信的异步队列
+            config_loader: 配置加载器,如果未提供则使用默认配置管理器
+        """
         # 加载配置
         self.config_manager = config_loader or get_config_manager()
         # 用于与 Agent/Monitor 通信
@@ -48,7 +74,9 @@ class SessionManager:
         # --- 热切换关键状态 ---
         self.session_start_time = 0  # 会话开始时间
         self.is_swapping = False  # 是否正在交换会话
-        self.renew_threshold = 600  # 10分钟
+        self.renew_threshold = 60  # 1分钟
+        self.conversation_count = 0  # 对话条数计数器
+        self.conversation_threshold = 10  # 对话条数阈值
 
         # --- [关键] 增量记忆缓存 ---
         # 用于记录在"后台预热期间"产生的新对话，防止切换后失忆
@@ -68,12 +96,14 @@ class SessionManager:
     # 1. 生命周期与管道启动
     # =========================================================================
 
-    async def start(self, websocket, input_mode=InputMode.TEXT, output_mode=OutputMode.TEXT_ONLY):
+    async def start(self, websocket, input_mode: InputMode = InputMode.TEXT, output_mode: OutputMode = OutputMode.TEXT_ONLY):
         """
-        系统启动入口
-        :param websocket: WebSocket 连接
-        :param input_mode: 输入方式 (AUDIO/TEXT)
-        :param output_mode: 输出方式 (TEXT_ONLY/TEXT_AND_AUDIO)
+        系统启动入口,并行初始化所有组件。
+        
+        Args:
+            websocket: WebSocket 连接对象,用于与前端通信
+            input_mode: 输入方式 (AUDIO/TEXT),默认为文本输入
+            output_mode: 输出方式 (TEXT_ONLY/TEXT_AND_AUDIO),默认为仅文本输出
         """
         self.websocket = websocket
         self.input_mode = input_mode
@@ -110,7 +140,10 @@ class SessionManager:
             f"System started in {time.time() - start_time:.2f}s (input: {input_mode.value}, output: {output_mode.value}).")
 
     async def stop(self):
-        """系统停止"""
+        """
+        系统停止,清理所有资源。
+        取消正在运行的任务,关闭所有服务连接。
+        """
         self.is_active = False
         if self.consumer_task and not self.consumer_task.done():
             self.consumer_task.cancel()
@@ -125,9 +158,16 @@ class SessionManager:
 
     async def _handle_user_input(self, text: str):
         """
-        处理用户输入 (来自 ASR 或 直接文本)
+        处理用户输入 (来自 ASR 或直接文本输入)。
+        如果正在预热新 Session,会将输入记录到增量缓存中。
+        
+        Args:
+            text: 用户输入的文本内容
         """
         if not text or not text.strip(): return
+
+        # 增加对话条数计数
+        self.conversation_count += 1
 
         # [关键] 后台预热新 Session，记录用户对话
         if self.is_preparing_renew:
@@ -150,7 +190,18 @@ class SessionManager:
                 logger.error(f"Error sending message to LLM: {e}")
 
     async def _consume_llm_queue(self, queue: asyncio.Queue):
-        """消费者：从 LLM 队列读取 token，处理 TTS 拼接和前端发送"""
+        """
+        消费者任务:从 LLM 队列读取 token,处理流式输出。
+        
+        主要功能:
+        - 从队列中读取 LLM 生成的 token
+        - 将 token 实时发送到前端 (流式文本)
+        - 检测完整句子并发送给 TTS (如果需要音频输出)
+        - 更新增量缓存 (如果正在预热新 Session)
+        
+        Args:
+            queue: LLM 输出的异步队列,包含生成的 token
+        """
         buffer = ""
         full_response = ""
 
@@ -209,7 +260,14 @@ class SessionManager:
             logger.error(f"Error in consumer task: {e}")
 
     def _update_incremental_cache(self, text: str):
-        """更新增量缓存中的 assistant 消息"""
+        """
+        更新增量缓存中的 assistant 消息。
+        如果缓存为空或最后一条不是 assistant 消息,则创建新消息;
+        否则追加到现有 assistant 消息中。
+        
+        Args:
+            text: 要添加到缓存的文本内容
+        """
         if not self.incremental_cache:
             self.incremental_cache.append({"role": "assistant", "content": text})
             return
@@ -221,7 +279,17 @@ class SessionManager:
             self.incremental_cache.append({"role": "assistant", "content": text})
 
     async def _handle_llm_complete(self, full_text: str):
-        """LLM 生成结束回调 (Turn End)"""
+        """
+        LLM 生成结束回调 (Turn End)。
+        
+        主要功能:
+        - 刷新 TTS 队列,确保所有音频播放完成
+        - 触发 Agent 分析当前对话历史
+        - 检查是否需要执行热切换或启动预热
+        
+        Args:
+            full_text: LLM 生成的完整响应文本
+        """
         # 仅在需要音频输出时 flush TTS
         if self.output_mode == OutputMode.TEXT_AND_AUDIO:
             await self.tts.flush()
@@ -245,6 +313,12 @@ class SessionManager:
             await self._check_renew_condition()
 
     async def _send_text_to_frontend(self, text: str):
+        """
+        发送文本到前端 WebSocket。
+        
+        Args:
+            text: 要发送的文本内容
+        """
         if self.websocket:
             try:
                 # 假设 websocket 发送 JSON
@@ -255,6 +329,12 @@ class SessionManager:
                 logger.error(f"Failed to send text to frontend: {e}")
 
     async def _send_audio_to_frontend(self, audio_data: bytes):
+        """
+        发送音频数据到前端 WebSocket。
+        
+        Args:
+            audio_data: PCM 格式的音频二进制数据
+        """
         if self.websocket:
             try:
                 # 结构设计：直接发送二进制 PCM 数据
@@ -263,19 +343,49 @@ class SessionManager:
                 logger.error(f"Failed to send audio to frontend: {e}")
 
     # =========================================================================
-    # 3. 真正的无缝热重载 (The "Soul" of Core.py)
+    # 3. 真正的无缝热重载
     # =========================================================================
 
     async def _check_renew_condition(self):
-        """检查时间或 Token 是否超标"""
+        """
+        检查是否需要启动 Session 热重载。
+        检测策略根据输入模式而定:
+        - 视觉系统输入/实时音频输入: 只检查时间(10分钟)
+        - 文本输入/普通音频输入: 只检查对话条数(10条)
+        """
         if self.is_preparing_renew: return
 
-        if time.time() - self.session_start_time > self.renew_threshold:
-            print("Renew threshold reached. Preparing shadow session...")
+        # 判断是否为实时交互模式
+        is_realtime_mode = self.input_mode in [InputMode.REALTIME_AUDIO, InputMode.VISION]
+        
+        should_renew = False
+        reason = ""
+        
+        if is_realtime_mode:
+            # 实时音频或视觉输入: 只检查时间
+            time_exceeded = time.time() - self.session_start_time > self.renew_threshold
+            if time_exceeded:
+                reason = f"时间超过 {self.renew_threshold}s"
+                should_renew = True
+        else:
+            # 文本或普通音频输入: 只检查对话条数
+            conversation_exceeded = self.conversation_count > self.conversation_threshold
+            if conversation_exceeded:
+                reason = f"对话条数超过 {self.conversation_threshold} 条"
+                should_renew = True
+        
+        if should_renew:
+            print(f"Renew threshold reached ({reason}). Preparing shadow session...")
             asyncio.create_task(self._prepare_shadow_session())
 
     async def _prepare_shadow_session(self):
-        """后台预热影子会话"""
+        """
+        后台预热影子会话 (Shadow Session)。
+        
+        在不影响当前服务的情况下,创建并预热新的 LLM Session。
+        预热完成后,系统会开始记录增量对话到缓存中,
+        以便切换时能够同步这段时间内的对话历史。
+        """
         self.is_preparing_renew = True
         self.incremental_cache = []  # 清空增量缓存
 
@@ -283,7 +393,7 @@ class SessionManager:
             # 1. 创建新 Session (此时会自动拉取最新的 Memory)
             self.pending_llm = await self._create_llm_session(is_renew=True)
 
-            # 2. 预热 (Warmup) - 可选
+            # 2. 预热 (Warmup) - 用于预热新的会话，加快第一次响应速度，可选
             # await self.pending_llm.warmup()
 
             print("Shadow session ready. Caching incremental chats...")
@@ -296,7 +406,13 @@ class SessionManager:
 
     async def _perform_hot_swap(self):
         """
-        执行热切换：核心在于"状态注入"
+        执行热切换,核心在于"状态注入"。
+        
+        热切换流程:
+        1. 将预热期间产生的增量对话注入到新 Session
+        2. 切换指针,使新 Session 成为当前服务的 Session
+        3. 重置相关状态标志
+        4. 延迟关闭旧 Session,确保尾音播放完成
         """
         if not self.pending_llm: return
         self.is_swapping = True
@@ -317,13 +433,21 @@ class SessionManager:
         self.incremental_cache = []
         self.is_preparing_renew = False
         self.session_start_time = time.time()
+        self.conversation_count = 0  # 重置对话条数计数器
         self.is_swapping = False
 
         # 4. 延迟关闭旧 Session (防止还有尾音没播完)
         asyncio.create_task(self._safe_close(old_llm))
         print("Session swapped successfully.")
 
-    async def _safe_close(self, session):
+    async def _safe_close(self, session: TextLLMClient):
+        """
+        安全关闭旧 Session。
+        延迟 5 秒后关闭,确保所有音频播放完成。
+        
+        Args:
+            session: 要关闭的 TextLLMClient 实例
+        """
         await asyncio.sleep(5)
         await session.close()
 
@@ -331,12 +455,17 @@ class SessionManager:
     # 4. 辅助方法
     # =========================================================================
 
-    async def _create_llm_session(self, is_renew=False):
+    async def _create_llm_session(self, is_renew: bool = False) -> TextLLMClient:
         """
-        创建 LLM 实例
-        :param is_renew: 如果是 True，不会绑定到当前 UI 输出，而是静默运行
+        创建并初始化 LLM Session 实例。
+        
+        Args:
+            is_renew: 是否为热重载创建。如果为 True,表示这是后台预热的 Session,
+                     不会立即绑定到当前 UI 输出,而是静默运行
+        
+        Returns:
+            TextLLMClient: 已连接的 LLM 客户端实例
         """
-
         # todo 补充人设输入
         llm = TextLLMClient()
 
@@ -344,7 +473,14 @@ class SessionManager:
         return llm
 
     async def _handle_interrupt(self):
-        """用户打断"""
+        """
+        处理用户打断事件。
+        
+        当检测到用户打断 (通常来自 VAD) 时:
+        - 清空 TTS 队列,停止当前音频播放
+        - 取消正在运行的消费者任务
+        - 取消 LLM 的生成任务
+        """
         print("User Interrupt!")
 
         # 仅在需要音频输出时清空 TTS 队列
