@@ -431,8 +431,10 @@ class TTSService:
         
         机制：
         1. 生成新的 speech_id。
-        2. 清除本地缓存。
-        3. 发送新 ID 信号给 Worker（Worker 检测到 ID 变化会丢弃旧任务）。
+        2. 清除本地缓存 (pending_chunks)。
+        3. 清空输入队列 (request_queue) - 丢弃待处理的请求。
+        4. 清空输出队列 (response_queue) - 丢弃已生成但未播放的音频。
+        5. 发送新 ID 信号给 Worker（Worker 检测到 ID 变化会丢弃旧任务）。
         """
         new_id = str(uuid.uuid4())
         logger.info(f"中断语音 {self.current_speech_id} -> {new_id}")
@@ -441,10 +443,26 @@ class TTSService:
         async with self.cache_lock:
             self.pending_chunks.clear()
 
-        # 2. 更新 speech ID（这将使下次 push_text 使用新 ID）
+        # 2. 清空输入队列 (request_queue)
+        if self.request_queue:
+            while not self.request_queue.empty():
+                try:
+                    self.request_queue.get_nowait()
+                except queue.Empty:
+                    break
+
+        # 3. 清空输出队列 (response_queue) - 关键!
+        if self.response_queue:
+            while not self.response_queue.empty():
+                try:
+                    self.response_queue.get_nowait()
+                except queue.Empty:
+                    break
+
+        # 4. 更新 speech ID（这将使下次 push_text 使用新 ID）
         self.current_speech_id = new_id
 
-        # 3. 发送中断信号给 worker
+        # 5. 发送中断信号给 worker
         if self.request_queue:
             self.request_queue.put((new_id, ""))
 
