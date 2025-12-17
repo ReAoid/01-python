@@ -16,40 +16,56 @@ logger = logging.getLogger(__name__)
 class GenieTTS:
     """
     Genie TTS 客户端
-    通过 HTTP API 与 Genie TTS 服务器通信，实现流式语音合成
+    通过 HTTP API 与 Genie TTS 服务器通信，实现流式语音合成。
+    
+    Usage:
+        client = GenieTTS(host="127.0.0.1", port=8000)
+        if await client.connect():
+            await client.load_character("feibi", "./models", "zh")
+            await client.set_reference_audio("./ref.wav", "参考文本", "zh")
+            
+            async for chunk in client.synthesize_stream("你好"):
+                # process audio chunk
+                pass
     """
     
     def __init__(self, host: str = "127.0.0.1", port: int = 8000):
         """
-        初始化 Genie TTS 客户端
+        初始化 Genie TTS 客户端。
         
         Args:
-            host: Genie TTS 服务器地址
-            port: Genie TTS 服务器端口
+            host: Genie TTS 服务器地址 (default: "127.0.0.1")
+            port: Genie TTS 服务器端口 (default: 8000)
         """
+        # 1. 初始化配置
         self.host = host
         self.port = port
         self.base_url = f"http://{host}:{port}"
+
+        # 2. 初始化会话
         self.session: Optional[aiohttp.ClientSession] = None
         self.character_name: Optional[str] = None
+
+        # 3. 初始化状态
         self.is_ready = False
         
     async def connect(self, timeout: int = 10) -> bool:
         """
-        连接到 Genie TTS 服务器并检查健康状态
+        连接到 Genie TTS 服务器并检查健康状态。
         
         Args:
-            timeout: 连接超时时间（秒）
+            timeout: 连接超时时间（秒）。默认为 10 秒。
             
         Returns:
-            bool: 连接是否成功
+            bool: 连接是否成功。成功返回 True，失败返回 False。
         """
         if self.session is None:
             self.session = aiohttp.ClientSession()
         
         try:
+            # 使用 /docs 端点作为健康检查，这比 / 更可靠
             async with self.session.get(
-                f"{self.base_url}/", 
+                f"{self.base_url}/docs", 
                 timeout=aiohttp.ClientTimeout(total=timeout)
             ) as response:
                 if response.status == 200:
@@ -72,15 +88,15 @@ class GenieTTS:
         language: str = "zh"
     ) -> bool:
         """
-        加载角色模型
+        加载指定角色的 TTS 模型。
         
         Args:
-            character_name: 角色名称
-            onnx_model_dir: ONNX 模型目录路径
-            language: 语言代码（zh/en/jp）
+            character_name: 角色名称（作为唯一标识符）。
+            onnx_model_dir: ONNX 模型文件的目录路径。
+            language: 语言代码（支持 'zh', 'en', 'jp'）。默认为 'zh'。
             
         Returns:
-            bool: 是否加载成功
+            bool: 是否加载成功。
         """
         if self.session is None:
             logger.error("客户端未连接，请先调用 connect()")
@@ -118,15 +134,17 @@ class GenieTTS:
         language: str = "zh"
     ) -> bool:
         """
-        设置参考音频（必需步骤，用于音色克隆）
+        设置参考音频（用于 Zero-shot 音色克隆）。
+        
+        必须在 load_character 之后调用。
         
         Args:
-            audio_path: 参考音频文件路径
-            audio_text: 参考音频对应的文本
-            language: 语言代码
+            audio_path: 参考音频文件的绝对路径。
+            audio_text: 参考音频对应的文本内容。
+            language: 参考音频的语言代码。默认为 'zh'。
             
         Returns:
-            bool: 是否设置成功
+            bool: 是否设置成功。
         """
         if self.session is None or self.character_name is None:
             logger.error("请先连接并加载角色")
@@ -164,14 +182,16 @@ class GenieTTS:
         split_sentence: bool = True
     ) -> AsyncIterator[bytes]:
         """
-        流式语音合成（异步生成器）
+        流式语音合成（异步生成器）。
+        
+        将文本发送给服务器，并异步接收返回的 PCM 音频数据块。
         
         Args:
-            text: 要合成的文本
-            split_sentence: 是否自动分句
+            text: 要合成的文本内容。
+            split_sentence: 是否让服务器自动进行分句处理。默认为 True。
             
         Yields:
-            bytes: 音频数据块（PCM 格式，32kHz, mono, 16-bit）
+            bytes: 音频数据块（PCM 格式，32kHz, mono, 16-bit）。
         """
         if not self.is_ready:
             logger.error("TTS 未就绪，请先完成角色加载和参考音频设置")
@@ -188,10 +208,13 @@ class GenieTTS:
         }
         
         try:
+            # 设置更长的超时时间，避免连接中断 (total=60, connect=10, sock_read=30)
+            timeout = aiohttp.ClientTimeout(total=60, connect=10, sock_read=30)
+            
             async with self.session.post(
                 f"{self.base_url}/tts",
                 json=payload,
-                timeout=aiohttp.ClientTimeout(total=60)
+                timeout=timeout
             ) as response:
                 if response.status == 200:
                     # 流式读取音频数据
