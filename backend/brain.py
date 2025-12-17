@@ -3,10 +3,10 @@ import logging
 import time
 from enum import Enum
 from typing import List, Dict, Optional, Callable
+import re
 
 # 引入项目现有组件
 from backend.utils.config_manager import get_config_manager
-from backend.core.message import Message
 
 # 引入服务组件
 from backend.services.asr_service import ASRService
@@ -15,9 +15,18 @@ from backend.services.text_llm_client import TextLLMClient
 
 logger = logging.getLogger(__name__)
 
+
 class InputMode(Enum):
-    AUDIO = "audio" # ASR -> LLM -> TTS
-    TEXT = "text"   # Text -> LLM -> TTS
+    """输入方式"""
+    AUDIO = "audio"  # 语音输入 (通过 ASR)
+    TEXT = "text"  # 文本输入
+
+
+class OutputMode(Enum):
+    """输出方式"""
+    TEXT_ONLY = "text_only"  # 仅输出文本
+    TEXT_AND_AUDIO = "text_audio"  # 输出文本和音频 (TTS)
+
 
 # --- 核心 Session Manager ---
 
@@ -27,71 +36,84 @@ class SessionManager:
         self.config_manager = config_loader or get_config_manager()
         # 用于与 Agent/Monitor 通信
         self.queue = message_queue
-        
+
         # --- 管道组件 ---
-        # 传入配置
         self.asr = ASRService(self.config_manager)
         self.tts = TTSService(self.config_manager)
-        
+
         # --- 双 Session 架构 (实现热切换) ---
-        self.current_llm = None     # 当前服务中的 LLM
-        self.pending_llm = None     # 后台预热中的 LLM
-        
+        self.current_llm: Optional[TextLLMClient] = None  # 当前服务中的 LLM
+        self.pending_llm: Optional[TextLLMClient] = None  # 后台预热中的 LLM
+
         # --- 热切换关键状态 ---
-        self.session_start_time = 0
-        self.is_swapping = False
+        self.session_start_time = 0  # 会话开始时间
+        self.is_swapping = False  # 是否正在交换会话
         self.renew_threshold = 600  # 10分钟
-        
+
         # --- [关键] 增量记忆缓存 ---
         # 用于记录在"后台预热期间"产生的新对话，防止切换后失忆
-        self.incremental_cache: List[Dict] = [] 
-        self.is_preparing_renew = False
+        self.incremental_cache: List[Dict] = []
+        self.is_preparing_renew = False  # 是否正在预热新的会话
 
         # --- 状态 ---
         self.is_active = False
-        self.mode = InputMode.AUDIO
+        self.input_mode = InputMode.TEXT
+        self.output_mode = OutputMode.TEXT_ONLY
         self.websocket = None
+
+        # --- 任务管理 ---
+        self.consumer_task: Optional[asyncio.Task] = None
 
     # =========================================================================
     # 1. 生命周期与管道启动
     # =========================================================================
 
-    async def start(self, websocket, mode=InputMode.AUDIO):
-        """系统启动入口"""
+    async def start(self, websocket, input_mode=InputMode.TEXT, output_mode=OutputMode.TEXT_ONLY):
+        """
+        系统启动入口
+        :param websocket: WebSocket 连接
+        :param input_mode: 输入方式 (AUDIO/TEXT)
+        :param output_mode: 输出方式 (TEXT_ONLY/TEXT_AND_AUDIO)
+        """
         self.websocket = websocket
-        self.mode = mode
+        self.input_mode = input_mode
+        self.output_mode = output_mode
         self.session_start_time = time.time()
-        
+
         logger.info("🚀 Starting system components in parallel...")
         start_time = time.time()
-        
+
         tasks = []
-        
-        # 1. 启动 TTS
-        tasks.append(self.tts.start(on_audio=self._send_audio_to_frontend))
-        
-        # 2. 启动 ASR
-        if mode == InputMode.AUDIO:
+
+        # 1. 启动 TTS (仅在需要音频输出时启动)
+        if output_mode == OutputMode.TEXT_AND_AUDIO:
+            tasks.append(self.tts.start(on_audio=self._send_audio_to_frontend))
+
+        # 2. 启动 ASR (仅在语音输入模式下启动)
+        if input_mode == InputMode.AUDIO:
             tasks.append(self.asr.start(
-                on_transcript=self._handle_user_input, # ASR 转录结果 -> LLM
-                on_vad_trigger=self._handle_interrupt    # 用户打断 -> 停止生成
+                on_transcript=self._handle_user_input,  # ASR 转录结果 -> LLM
+                on_vad_trigger=self._handle_interrupt  # 用户打断 -> 停止生成
             ))
-        
+
         # 3. 启动核心 LLM (冷启动)
         async def start_llm():
             self.current_llm = await self._create_llm_session(is_renew=False)
-            
+
         tasks.append(start_llm())
-        
+
         # 并行执行所有启动任务
         await asyncio.gather(*tasks)
-        
+
         self.is_active = True
-        logger.info(f"System started in {time.time() - start_time:.2f}s ({mode} mode).")
+        logger.info(
+            f"System started in {time.time() - start_time:.2f}s (input: {input_mode.value}, output: {output_mode.value}).")
 
     async def stop(self):
         """系统停止"""
         self.is_active = False
+        if self.consumer_task and not self.consumer_task.done():
+            self.consumer_task.cancel()
         if self.current_llm: await self.current_llm.close()
         if self.pending_llm: await self.pending_llm.close()
         await self.asr.stop()
@@ -106,51 +128,116 @@ class SessionManager:
         处理用户输入 (来自 ASR 或 直接文本)
         """
         if not text or not text.strip(): return
-        
+
         # [关键] 后台预热新 Session，记录用户对话
         if self.is_preparing_renew:
             self.incremental_cache.append({"role": "user", "content": text})
-            
+
         # 发送给当前 LLM
         if self.current_llm:
-            await self.current_llm.send_user_message(text)
+            try:
+                # 获取 LLM 输出队列
+                queue = await self.current_llm.send_user_message(text)
 
-    async def _handle_llm_token(self, text: str):
-        """LLM 生成回调"""
-        # 1. 发给 TTS 流式合成
-        await self.tts.push_text(text)
-        # 2. 发给前端显示
-        await self._send_text_to_frontend(text)
-        
-        # [关键] 记录增量回复
-        if self.is_preparing_renew and self.incremental_cache:
-            # 简单追加到最后一条 assistant 消息中
-            last_msg = self.incremental_cache[-1]
-            if last_msg['role'] == 'assistant':
-                last_msg['content'] += text
-            else:
-                self.incremental_cache.append({"role": "assistant", "content": text})
-        elif self.is_preparing_renew:
-             # 如果缓存为空但收到 token (比如刚刚开始生成)，添加一条 assistant 消息
-             self.incremental_cache.append({"role": "assistant", "content": text})
+                # 如果之前的消费者任务还在运行，先取消
+                if self.consumer_task and not self.consumer_task.done():
+                    self.consumer_task.cancel()
 
-    async def _handle_llm_complete(self):
+                # 启动新的消费者任务
+                self.consumer_task = asyncio.create_task(self._consume_llm_queue(queue))
+
+            except Exception as e:
+                logger.error(f"Error sending message to LLM: {e}")
+
+    async def _consume_llm_queue(self, queue: asyncio.Queue):
+        """消费者：从 LLM 队列读取 token，处理 TTS 拼接和前端发送"""
+        buffer = ""
+        full_response = ""
+
+        # 句子结束符正则 (中英文)
+        sentence_endings = re.compile(r'[.!?;。！？；\n]+')
+
+        try:
+            while True:
+                token = await queue.get()
+
+                # 结束信号
+                if token is None:
+                    break
+
+                full_response += token
+
+                # 1. 直接 Websocket 返回给前端 (流式文本)
+                await self._send_text_to_frontend(token)
+
+                # 2. 拼接 buffer，检测完整句子 (仅在需要音频输出时)
+                if self.output_mode == OutputMode.TEXT_AND_AUDIO:
+                    buffer += token
+
+                    # 检查是否有句子结束标记
+                    while True:
+                        match = sentence_endings.search(buffer)
+                        if match:
+                            end_pos = match.end()
+                            sentence = buffer[:end_pos]
+                            remaining = buffer[end_pos:]
+
+                            # 发送完整句子给 TTS
+                            if sentence.strip():
+                                await self.tts.push_text(sentence)
+
+                            buffer = remaining
+                        else:
+                            break
+
+                # [关键] 记录增量回复 (兼容热重载逻辑)
+                if self.is_preparing_renew:
+                    self._update_incremental_cache(token)
+
+            # 循环结束 (None)
+            # 处理 buffer 中剩余的内容 (仅在需要音频输出时)
+            if self.output_mode == OutputMode.TEXT_AND_AUDIO and buffer.strip():
+                await self.tts.push_text(buffer)
+
+            # 触发完成处理
+            await self._handle_llm_complete(full_response)
+
+        except asyncio.CancelledError:
+            logger.info("LLM consumer task cancelled.")
+            # 任务取消时，不需要做特殊处理，TextLLMClient 会处理自己的 task
+        except Exception as e:
+            logger.error(f"Error in consumer task: {e}")
+
+    def _update_incremental_cache(self, text: str):
+        """更新增量缓存中的 assistant 消息"""
+        if not self.incremental_cache:
+            self.incremental_cache.append({"role": "assistant", "content": text})
+            return
+
+        last_msg = self.incremental_cache[-1]
+        if last_msg['role'] == 'assistant':
+            last_msg['content'] += text
+        else:
+            self.incremental_cache.append({"role": "assistant", "content": text})
+
+    async def _handle_llm_complete(self, full_text: str):
         """LLM 生成结束回调 (Turn End)"""
-        await self.tts.flush()
-        
+        # 仅在需要音频输出时 flush TTS
+        if self.output_mode == OutputMode.TEXT_AND_AUDIO:
+            await self.tts.flush()
+
         # 1. 触发 Agent 分析 (通过队列解耦)
-        #    模仿 core.py 通知 agent_server
         current_history = self.current_llm.get_history()
-        
+
         # 确保 queue 不为空
         if self.queue:
             # 转换 Message 对象为 dict 以便传输
             history_dicts = [{"role": m.role, "content": m.content} for m in current_history]
             await self.queue.put({
-                "type": "analyze_request", 
-                "history": history_dicts[-6:] # 只发最近几轮
+                "type": "analyze_request",
+                "history": history_dicts[-6:]  # 只发最近几轮
             })
-        
+
         # 2. 检查是否需要热切换
         if self.pending_llm:
             await self._perform_hot_swap()
@@ -162,6 +249,7 @@ class SessionManager:
             try:
                 # 假设 websocket 发送 JSON
                 import json
+                # 结构设计：type: "text_stream", content: 文本内容
                 await self.websocket.send_text(json.dumps({"type": "text_stream", "content": text}))
             except Exception as e:
                 logger.error(f"Failed to send text to frontend: {e}")
@@ -169,7 +257,7 @@ class SessionManager:
     async def _send_audio_to_frontend(self, audio_data: bytes):
         if self.websocket:
             try:
-                # 假设 websocket 支持发送 bytes
+                # 结构设计：直接发送二进制 PCM 数据
                 await self.websocket.send_bytes(audio_data)
             except Exception as e:
                 logger.error(f"Failed to send audio to frontend: {e}")
@@ -181,7 +269,7 @@ class SessionManager:
     async def _check_renew_condition(self):
         """检查时间或 Token 是否超标"""
         if self.is_preparing_renew: return
-        
+
         if time.time() - self.session_start_time > self.renew_threshold:
             print("Renew threshold reached. Preparing shadow session...")
             asyncio.create_task(self._prepare_shadow_session())
@@ -189,18 +277,18 @@ class SessionManager:
     async def _prepare_shadow_session(self):
         """后台预热影子会话"""
         self.is_preparing_renew = True
-        self.incremental_cache = [] # 清空增量缓存
-        
+        self.incremental_cache = []  # 清空增量缓存
+
         try:
             # 1. 创建新 Session (此时会自动拉取最新的 Memory)
             self.pending_llm = await self._create_llm_session(is_renew=True)
-            
+
             # 2. 预热 (Warmup) - 可选
             # await self.pending_llm.warmup()
-            
+
             print("Shadow session ready. Caching incremental chats...")
             # 此时，_handle_user_input 开始往 incremental_cache 里写数据
-            
+
         except Exception as e:
             print(f"Renew failed: {e}")
             self.is_preparing_renew = False
@@ -212,25 +300,25 @@ class SessionManager:
         """
         if not self.pending_llm: return
         self.is_swapping = True
-        
+
         print(f"Swapping sessions. Syncing {len(self.incremental_cache)} new messages...")
-        
+
         # [关键] 1. 将预热期间产生的对话注入到新 Session
         # 这样新 Session 就"知道"刚才那十几秒发生了什么
         if self.incremental_cache:
             await self.pending_llm.inject_history(self.incremental_cache)
-        
+
         # 2. 指针切换
         old_llm = self.current_llm
         self.current_llm = self.pending_llm
-        
+
         # 3. 重置状态
         self.pending_llm = None
         self.incremental_cache = []
         self.is_preparing_renew = False
         self.session_start_time = time.time()
         self.is_swapping = False
-        
+
         # 4. 延迟关闭旧 Session (防止还有尾音没播完)
         asyncio.create_task(self._safe_close(old_llm))
         print("Session swapped successfully.")
@@ -248,23 +336,25 @@ class SessionManager:
         创建 LLM 实例
         :param is_renew: 如果是 True，不会绑定到当前 UI 输出，而是静默运行
         """
-        # 重新加载配置
-        cfg = self.config_manager.get_core_config()
-        api_key = cfg.get("LLM_API_KEY")
-        
-        if not api_key:
-            raise ValueError("LLM_API_KEY 未在配置中找到，请检查配置文件或环境变量")
 
-        llm = TextLLMClient(
-            api_key=api_key,
-            on_token=self._handle_llm_token if not is_renew else None, # 预热时不输出
-            on_complete=self._handle_llm_complete if not is_renew else None
-        )
+        # todo 补充人设输入
+        llm = TextLLMClient()
+
         await llm.connect()
         return llm
 
     async def _handle_interrupt(self):
         """用户打断"""
         print("User Interrupt!")
-        await self.tts.clear_queue()
-        await self.current_llm.cancel()
+
+        # 仅在需要音频输出时清空 TTS 队列
+        if self.output_mode == OutputMode.TEXT_AND_AUDIO:
+            await self.tts.clear_queue()
+
+        # 取消当前的消费者任务
+        if self.consumer_task and not self.consumer_task.done():
+            self.consumer_task.cancel()
+
+        # 取消 LLM 生成
+        if self.current_llm:
+            await self.current_llm.cancel()
