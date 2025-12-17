@@ -259,7 +259,7 @@ class ConfigManager:
             return json_val
 
         return {
-            'LLM_MODEL_ID': get_val("LLM_MODEL_ID", llm_cfg.get('default_model')) or "gpt-3.5-turbo",
+            'LLM_MODEL_ID': get_val("LLM_MODEL_ID", llm_cfg.get('default_model')) or "gpt-4o",
             'LLM_PROVIDER': get_val("LLM_PROVIDER", llm_cfg.get('default_provider')) or "openai",
             'LLM_API_KEY': get_val("LLM_API_KEY", api_cfg.get('llm_api_key')),
             'LLM_BASE_URL': get_val("LLM_BASE_URL", api_cfg.get('llm_base_url')),

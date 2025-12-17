@@ -24,15 +24,15 @@ class OpenaiLlm(Llm):
             timeout: 超时时间(秒)
         """
         config = get_core_config()
-        
+
         self.model = model or config.get("LLM_MODEL_ID")
         api_key = api_key or config.get("LLM_API_KEY")
         base_url = base_url or config.get("LLM_BASE_URL")
         timeout = timeout or config.get("LLM_TIMEOUT", 60)
-        
+
         if not all([self.model, api_key, base_url]):
             raise ValueError("模型ID、API密钥和服务地址必须被提供或在配置文件/环境变量中定义。")
-        
+
         self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
         self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
 
@@ -62,9 +62,9 @@ class OpenaiLlm(Llm):
         config = get_core_config()
         default_temp = config.get("TEMPERATURE", 0.7)
         temperature = kwargs.get("temperature", default_temp)
-        
+
         logger.info(f"正在调用 {self.model} 模型(非流式)...")
-        
+
         try:
             api_messages = self._convert_messages(messages)
             response = self.client.chat.completions.create(
@@ -74,12 +74,12 @@ class OpenaiLlm(Llm):
                 stream=False,
                 **{k: v for k, v in kwargs.items() if k not in ["temperature"]}
             )
-            
+
             content = response.choices[0].message.content
             logger.success(f"大语言模型响应成功,生成了 {len(content)} 个字符")
-            
+
             return Message(role="assistant", content=content)
-            
+
         except Exception as e:
             logger.error(f"调用LLM API时发生错误: {e}")
             raise
@@ -98,9 +98,9 @@ class OpenaiLlm(Llm):
         config = get_core_config()
         default_temp = config.get("TEMPERATURE", 0.7)
         temperature = kwargs.get("temperature", default_temp)
-        
+
         logger.info(f"正在调用 {self.model} 模型(流式)...")
-        
+
         try:
             api_messages = self._convert_messages(messages)
             response = self.client.chat.completions.create(
@@ -110,15 +110,15 @@ class OpenaiLlm(Llm):
                 stream=True,
                 **{k: v for k, v in kwargs.items() if k not in ["temperature"]}
             )
-            
+
             logger.success("大语言模型开始流式响应")
             for chunk in response:
                 content = chunk.choices[0].delta.content or ""
                 if content:
                     yield content
-            
+
             logger.info("流式响应完成")
-            
+
         except Exception as e:
             logger.error(f"调用LLM API时发生错误: {e}")
             raise
@@ -137,9 +137,9 @@ class OpenaiLlm(Llm):
         config = get_core_config()
         default_temp = config.get("TEMPERATURE", 0.7)
         temperature = kwargs.get("temperature", default_temp)
-        
+
         logger.info(f"正在异步调用 {self.model} 模型(流式)...")
-        
+
         try:
             api_messages = self._convert_messages(messages)
             response = await self.async_client.chat.completions.create(
@@ -149,15 +149,15 @@ class OpenaiLlm(Llm):
                 stream=True,
                 **{k: v for k, v in kwargs.items() if k not in ["temperature"]}
             )
-            
+
             logger.success("大语言模型开始异步流式响应")
             async for chunk in response:
                 content = chunk.choices[0].delta.content or ""
                 if content:
                     yield content
-            
+
             logger.info("异步流式响应完成")
-            
+
         except Exception as e:
             logger.error(f"调用LLM API时发生错误: {e}")
             raise
@@ -167,37 +167,37 @@ class OpenaiLlm(Llm):
 if __name__ == '__main__':
     try:
         from backend.core.logger import setup_logger
-        # 移除 Config 依赖
-        # from backend.core.config import Config
-        
+
         # 初始化日志系统
         setup_logger(log_level="INFO")
-        
+
         # 加载环境变量 (如果需要)
         from dotenv import load_dotenv
+
         load_dotenv()
-        
+
         llm = OpenaiLlm()
-        
+
         # 创建示例消息
         from backend.core.message import Message
+
         example_messages = [
             Message(role="system", content="You are a helpful assistant that writes Python code."),
             Message(role="user", content="写一个快速排序算法")
         ]
-        
+
         logger.info("=== 测试非流式调用 ===")
         response = llm.generate(example_messages)
         logger.info(f"完整响应:\n{response.content}\n")
-        
+
         logger.info("=== 测试流式调用 ===")
         collected_content = []
         for chunk in llm.stream(example_messages):
             print(chunk, end="", flush=True)
             collected_content.append(chunk)
-        
+
         logger.info(f"\n流式响应收集完成,共 {len(''.join(collected_content))} 个字符")
-        
+
     except ValueError as e:
         logger.error(f"配置错误: {e}")
     except Exception as e:
