@@ -204,17 +204,33 @@ class SessionManager:
                 if not self.websocket:
                     break
                     
-                data = await self.websocket.receive_text()
+                # 修改：使用 receive() 同时接收文本和二进制
+                message = await self.websocket.receive()
                 
-                # 2. 解析 JSON
-                try:
-                    message = json.loads(data)
-                except json.JSONDecodeError:
-                    logger.warning("Received invalid JSON")
-                    continue
+                if message["type"] == "websocket.receive":
+                    if "text" in message:
+                        # 文本消息 (JSON)
+                        data = message["text"]
+                        if not data: continue
+                        
+                        try:
+                            msg_obj = json.loads(data)
+                            # 异步分发
+                            asyncio.create_task(self._dispatch_action(msg_obj))
+                        except json.JSONDecodeError:
+                            logger.warning("Received invalid JSON")
+                            continue
+                            
+                    elif "bytes" in message:
+                        # 二进制消息 (音频)
+                        data = message["bytes"]
+                        if not data: continue
+                        
+                        # 异步处理音频输入
+                        asyncio.create_task(self._process_audio_input(data))
 
-                # 3. 异步分发 (关键：不要 await，使用 create_task 实现高并发)
-                asyncio.create_task(self._dispatch_action(message))
+                elif message["type"] == "websocket.disconnect":
+                    break
 
         except WebSocketDisconnect:
             logger.info("WebSocket disconnected")
@@ -225,17 +241,40 @@ class SessionManager:
 
     async def _dispatch_action(self, message: dict):
         """
-        [分发器] 根据 action 路由消息
+        [分发器] 根据 type 路由消息
         """
-        action = message.get("action")
+        action = message.get("type")
+        if not action:
+            logger.warning("Message missing 'type' field, ignoring")
+            return
         
         if action == "stream_data":
             # 处理流式数据 (核心业务)
             await self._handle_stream_data(message)
+
+        elif action == "user_text":
+             # 协议定义的文本消息
+            content = message.get("content")
+            if content:
+                await self._handle_user_input(content)
             
         elif action == "interrupt":
             # 处理打断
             await self._handle_interrupt()
+            
+        elif action == "config":
+            # 处理配置更新
+            data = message.get("data", {})
+            if "input_mode" in data:
+                try:
+                    self.input_mode = InputMode(data["input_mode"])
+                except ValueError:
+                    pass
+            if "output_mode" in data:
+                try:
+                    self.output_mode = OutputMode(data["output_mode"])
+                except ValueError:
+                    pass
             
         elif action == "ping":
             # 心跳回应
