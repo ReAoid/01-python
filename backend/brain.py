@@ -1,9 +1,12 @@
 import asyncio
 import logging
 import time
+import json
 from enum import Enum
 from typing import List, Dict, Optional, Callable
 import re
+
+from fastapi import WebSocket, WebSocketDisconnect
 
 # 引入项目现有组件
 from backend.utils.config_manager import get_config_manager
@@ -87,7 +90,12 @@ class SessionManager:
         self.is_active = False
         self.input_mode = InputMode.TEXT
         self.output_mode = OutputMode.TEXT_ONLY
-        self.websocket = None
+        self.websocket: Optional[WebSocket] = None
+
+        # --- 通信控制组件 ---
+        self.input_queue = []          # 智能缓存队列 (用于暂存未就绪时的输入)
+        self.lock = asyncio.Lock()     # 异步锁 (保护共享状态)
+        self.is_ready = False          # 系统就绪标志
 
         # --- 任务管理 ---
         self.consumer_task: Optional[asyncio.Task] = None
@@ -96,7 +104,7 @@ class SessionManager:
     # 1. 生命周期与管道启动
     # =========================================================================
 
-    async def start(self, websocket, input_mode: InputMode = InputMode.TEXT, output_mode: OutputMode = OutputMode.TEXT_ONLY):
+    async def start(self, websocket: WebSocket, input_mode: InputMode = InputMode.TEXT, output_mode: OutputMode = OutputMode.TEXT_ONLY):
         """
         系统启动入口,并行初始化所有组件。
         
@@ -111,8 +119,39 @@ class SessionManager:
         self.session_start_time = time.time()
 
         logger.info("🚀 Starting system components in parallel...")
-        start_time = time.time()
+        
+        # 1. 启动监听循环 (非阻塞，作为后台任务运行)
+        # 必须先启动监听，才能接收前端的消息
+        listen_task = asyncio.create_task(self._listen_loop())
 
+        try:
+            # 2. 并行初始化内部组件 (LLM, TTS, ASR)
+            # 加锁，表示正在初始化，暂不能处理业务数据
+            async with self.lock:
+                self.is_ready = False
+                await self._init_components(input_mode, output_mode)
+                self.is_ready = True
+            
+            # 3. 初始化完成后，处理积压的数据 (Smart Buffering)
+            await self._process_queued_data()
+            
+            self.is_active = True
+            
+            # 4. 等待监听循环结束 (通常是连接断开时)
+            await listen_task
+
+        except asyncio.CancelledError:
+            logger.info("Session task cancelled")
+        except Exception as e:
+            logger.error(f"Session error: {e}", exc_info=True)
+        finally:
+            await self.stop()
+            
+    async def _init_components(self, input_mode: InputMode, output_mode: OutputMode):
+        """
+        初始化 LLM, TTS, ASR 等组件
+        """
+        start_time = time.time()
         tasks = []
 
         # 1. 启动 TTS (仅在需要音频输出时启动)
@@ -134,10 +173,9 @@ class SessionManager:
 
         # 并行执行所有启动任务
         await asyncio.gather(*tasks)
-
-        self.is_active = True
+        
         logger.info(
-            f"System started in {time.time() - start_time:.2f}s (input: {input_mode.value}, output: {output_mode.value}).")
+            f"System components initialized in {time.time() - start_time:.2f}s (input: {input_mode.value}, output: {output_mode.value}).")
 
     async def stop(self):
         """
@@ -153,7 +191,128 @@ class SessionManager:
         await self.tts.stop()
 
     # =========================================================================
-    # 2. 核心数据流 (Data Flow)
+    # 2. WebSocket 监听与分发
+    # =========================================================================
+
+    async def _listen_loop(self):
+        """
+        [接收端] 无限循环，监听 WebSocket 消息
+        """
+        try:
+            while True:
+                # 1. 接收消息 (Text Frame 承载 JSON, Binary Frame 承载音频)
+                if not self.websocket:
+                    break
+                    
+                data = await self.websocket.receive_text()
+                
+                # 2. 解析 JSON
+                try:
+                    message = json.loads(data)
+                except json.JSONDecodeError:
+                    logger.warning("Received invalid JSON")
+                    continue
+
+                # 3. 异步分发 (关键：不要 await，使用 create_task 实现高并发)
+                asyncio.create_task(self._dispatch_action(message))
+
+        except WebSocketDisconnect:
+            logger.info("WebSocket disconnected")
+        except Exception as e:
+            logger.error(f"Error in listen loop: {e}")
+        finally:
+            self.is_active = False
+
+    async def _dispatch_action(self, message: dict):
+        """
+        [分发器] 根据 action 路由消息
+        """
+        action = message.get("action")
+        
+        if action == "stream_data":
+            # 处理流式数据 (核心业务)
+            await self._handle_stream_data(message)
+            
+        elif action == "interrupt":
+            # 处理打断
+            await self._handle_interrupt()
+            
+        elif action == "ping":
+            # 心跳回应
+            if self.websocket:
+                try:
+                    await self.websocket.send_text(json.dumps({"type": "pong"}))
+                except Exception:
+                    pass
+
+    async def _handle_stream_data(self, message: dict):
+        """
+        处理输入数据，具备未就绪缓存功能
+        """
+        async with self.lock:
+            # 如果系统还没准备好 (例如 LLM 正在连接中)，将数据存入缓存
+            if not self.is_ready:
+                self.input_queue.append(message)
+                logger.info("System not ready, buffering data...")
+                return
+
+        # 系统已就绪，直接处理
+        await self._process_single_message(message)
+
+    async def _process_queued_data(self):
+        """
+        处理缓存队列中的积压数据
+        """
+        if self.input_queue:
+            logger.info(f"Processing {len(self.input_queue)} buffered messages...")
+            while self.input_queue:
+                msg = self.input_queue.pop(0)
+                await self._process_single_message(msg)
+
+    async def _process_single_message(self, message: dict):
+        """
+        实际的业务逻辑处理
+        """
+        input_type = message.get("input_type")
+        data = message.get("data")
+
+        if input_type == "text":
+            # 路由到现有的文本处理函数
+            await self._handle_user_input(data)
+            
+        elif input_type == "audio":
+            # 路由到 ASR 服务，仅支持 PCM 二进制数据
+            await self._process_audio_input(data)
+
+    async def _process_audio_input(self, data: bytes):
+        """
+        处理音频输入数据（仅支持 PCM 二进制格式）
+        
+        Args:
+            data: PCM 音频数据 (bytes)
+                格式要求：
+                - 采样率: 16000 Hz
+                - 位深: 16-bit (2 bytes per sample)
+                - 声道: 单声道 (Mono)
+                - 字节序: Little-endian
+        """
+        if not isinstance(data, bytes):
+            logger.error(f"Invalid audio data type: {type(data)}, expected bytes")
+            return
+        
+        if not data:
+            logger.warning("Received empty audio data")
+            return
+        
+        try:
+            logger.debug(f"Received PCM audio data: {len(data)} bytes")
+            # 推送音频数据到 ASR 服务
+            await self.asr.push_audio_data(data)
+        except Exception as e:
+            logger.error(f"Error processing audio input: {e}", exc_info=True)
+
+    # =========================================================================
+    # 3. 核心数据流 (Data Flow)
     # =========================================================================
 
     async def _handle_user_input(self, text: str):
@@ -295,16 +454,17 @@ class SessionManager:
             await self.tts.flush()
 
         # 1. 触发 Agent 分析 (通过队列解耦)
-        current_history = self.current_llm.get_history()
+        if self.current_llm:
+            current_history = self.current_llm.get_history()
 
-        # 确保 queue 不为空
-        if self.queue:
-            # 转换 Message 对象为 dict 以便传输
-            history_dicts = [{"role": m.role, "content": m.content} for m in current_history]
-            await self.queue.put({
-                "type": "analyze_request",
-                "history": history_dicts[-6:]  # 只发最近几轮
-            })
+            # 确保 queue 不为空
+            if self.queue:
+                # 转换 Message 对象为 dict 以便传输
+                history_dicts = [{"role": m.role, "content": m.content} for m in current_history]
+                await self.queue.put({
+                    "type": "analyze_request",
+                    "history": history_dicts[-6:]  # 只发最近几轮
+                })
 
         # 2. 检查是否需要热切换
         if self.pending_llm:
@@ -321,8 +481,6 @@ class SessionManager:
         """
         if self.websocket:
             try:
-                # 假设 websocket 发送 JSON
-                import json
                 # 结构设计：type: "text_stream", content: 文本内容
                 await self.websocket.send_text(json.dumps({"type": "text_stream", "content": text}))
             except Exception as e:
@@ -341,9 +499,22 @@ class SessionManager:
                 await self.websocket.send_bytes(audio_data)
             except Exception as e:
                 logger.error(f"Failed to send audio to frontend: {e}")
+                
+    async def _send_state_update(self, state: str):
+        """
+        [发送端] 发送状态变更
+        """
+        if self.websocket:
+            try:
+                await self.websocket.send_text(json.dumps({
+                    "type": "state_change",
+                    "state": state
+                }))
+            except Exception as e:
+                logger.error(f"Send state error: {e}")
 
     # =========================================================================
-    # 3. 真正的无缝热重载
+    # 4. 真正的无缝热重载
     # =========================================================================
 
     async def _check_renew_condition(self):
@@ -452,7 +623,7 @@ class SessionManager:
         await session.close()
 
     # =========================================================================
-    # 4. 辅助方法
+    # 5. 辅助方法
     # =========================================================================
 
     async def _create_llm_session(self, is_renew: bool = False) -> TextLLMClient:
