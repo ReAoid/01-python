@@ -58,7 +58,7 @@ async def tts_worker_async(request_queue: Queue, response_queue: Queue, config: 
 
     # 初始化 Genie TTS 客户端
     host = config.get('host', '127.0.0.1')
-    port = config.get('port', 8000)
+    port = config.get('port', 8001)
     genie_client = GenieTTS(host=host, port=port)
 
     # 记录正在处理的语音合成任务的 ID，用于中断检测。
@@ -220,7 +220,7 @@ class TTSService:
         # 默认值
         enabled = True
         host = '127.0.0.1'
-        port = 8000
+        port = 8001
         character = 'feibi'
         genie_data_dir = None
         

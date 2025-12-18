@@ -19,7 +19,7 @@ class GenieTTS:
     通过 HTTP API 与 Genie TTS 服务器通信，实现流式语音合成。
     
     Usage:
-        client = GenieTTS(host="127.0.0.1", port=8000)
+        client = GenieTTS(host="127.0.0.1", port=8001)
         if await client.connect():
             await client.load_character("feibi", "./models", "zh")
             await client.set_reference_audio("./ref.wav", "参考文本", "zh")
@@ -29,13 +29,13 @@ class GenieTTS:
                 pass
     """
     
-    def __init__(self, host: str = "127.0.0.1", port: int = 8000):
+    def __init__(self, host: str = "127.0.0.1", port: int = 8001):
         """
         初始化 Genie TTS 客户端。
         
         Args:
             host: Genie TTS 服务器地址 (default: "127.0.0.1")
-            port: Genie TTS 服务器端口 (default: 8000)
+            port: Genie TTS 服务器端口 (default: 8001)
         """
         # 1. 初始化配置
         self.host = host
@@ -269,7 +269,7 @@ def start_genie_server_standalone(
     
     Args:
         host: 服务器监听地址（默认从配置文件读取，回退到 127.0.0.1）
-        port: 服务器监听端口（默认从配置文件读取，回退到 8000）
+        port: 服务器监听端口（默认从配置文件读取，回退到 8001）
         workers: 工作进程数量
         genie_data_dir: Genie 数据目录路径（默认从配置文件读取，回退到 backend/config/tts）
     """
@@ -282,7 +282,7 @@ def start_genie_server_standalone(
         
         # 使用配置文件的值作为默认值
         host = host or tts_config.get('server_host', '127.0.0.1')
-        port = port or tts_config.get('server_port', 8000)
+        port = port or tts_config.get('server_port', 8001)
         genie_data_dir = genie_data_dir or tts_config.get('genie_data_dir')
         
         logger.info(f"从配置文件加载 TTS 设置: host={host}, port={port}, data_dir={genie_data_dir}")
@@ -290,7 +290,7 @@ def start_genie_server_standalone(
         logger.warning(f"加载配置文件失败，使用默认值: {e}")
         # 回退到默认值
         host = host or '127.0.0.1'
-        port = port or 8000
+        port = port or 8001
         # 如果没有配置，使用默认路径
         if not genie_data_dir:
             genie_data_dir = str(Path(__file__).parent.parent / 'config' / 'tts' / 'GenieData')
@@ -410,7 +410,7 @@ if __name__ == "__main__":
     
     # 读取默认配置（用于帮助信息）
     default_host = "127.0.0.1"
-    default_port = 8000
+    default_port = 8001
     default_data_dir = "backend/config/tts/GenieData"
     
     try:

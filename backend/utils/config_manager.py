@@ -305,7 +305,7 @@ class ConfigManager:
             'engine': get_val("TTS_ENGINE", tts_cfg.get('engine')) or "genie",
             'genie_data_dir': genie_data_dir,
             'server_host': get_val("TTS_SERVER_HOST", server_cfg.get('host')) or "127.0.0.1",
-            'server_port': get_val("TTS_SERVER_PORT", server_cfg.get('port'), int) or 8000,
+            'server_port': get_val("TTS_SERVER_PORT", server_cfg.get('port'), int) or 8001,
             'auto_start': get_val("TTS_AUTO_START", server_cfg.get('auto_start'), bool) or False,
             'active_character': get_val("TTS_ACTIVE_CHARACTER", tts_cfg.get('active_character')) or "feibi",
             'language': get_val("TTS_LANGUAGE", tts_cfg.get('language')) or "zh"
