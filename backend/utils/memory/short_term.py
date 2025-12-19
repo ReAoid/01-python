@@ -44,7 +44,7 @@ class ShortTermMemory:
 
         TODO: [逻辑优化]
         1. 保护机制：智能修剪，不要移除 System Prompt (通常在 index 0) 或被标记为"关键"的消息。
-        2. 记忆压缩：在移除消息前，使用 LLM 对即将移除的对话进行摘要 (Summarization)，并将摘要作为新的上下文插入或存入长期记忆 (参考 N.E.K.O 的 CompressedRecentHistoryManager)。
+        2. 记忆压缩：在移除消息前，使用 LLM 对即将移除的对话进行摘要 (Summarization)，并将摘要作为新的上下文插入或存入长期记忆
         """
         if len(self.messages) > self.max_messages:
             # 简单策略：移除最早的消息（通常保留第一个System Prompt是更好的做法，但在Manager层处理更好）

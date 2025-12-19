@@ -67,7 +67,14 @@ class SessionManager:
         self.queue = message_queue
 
         # --- 管道组件 ---
-        self.asr = ASRService(self.config_manager)
+        # ASRService 需要字典配置
+        asr_config = {
+            "sample_rate": 16000,
+            "channels": 1,
+            "sample_width": 2
+        }
+        self.asr = ASRService(asr_config)
+        # TTSService 需要 ConfigManager 对象(它内部会调用 get_tts_config)
         self.tts = TTSService(self.config_manager)
 
         # --- 双 Session 架构 (实现热切换) ---
