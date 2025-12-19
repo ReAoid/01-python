@@ -1,0 +1,277 @@
+<script setup>
+/**
+ * 聊天主界面组件 (Chat Interface)
+ * -------------------------------------------------------------------------
+ * 这是一个功能完整的聊天窗口组件，实现了消息流展示、用户输入、侧边栏交互等功能。
+ * 
+ * 主要功能:
+ * 1. 消息列表管理 (Messages State): 存储和展示对话历史。
+ * 2. 模拟 AI 交互 (Simulation): 模拟发送请求、打字机效果和 AI 回复。
+ * 3. 自动滚动 (Auto-scroll): 新消息到来时自动滚动到底部。
+ * 4. 响应式侧边栏 (Responsive Sidebar): 在移动端支持抽屉式切换。
+ */
+
+import { ref, nextTick, onMounted } from 'vue'
+import MessageBubble from './MessageBubble.vue'
+import Sidebar from './Sidebar.vue'
+
+// =========================================================================
+// 1. 状态定义 (State Definitions)
+// =========================================================================
+
+/**
+ * 消息列表数据
+ * id: 唯一标识
+ * role: 'user' (用户) | 'ai' (机器人)
+ * content: 消息文本内容
+ * timestamp: 发送时间
+ * type: 消息类型 (目前仅支持 'text')
+ */
+const messages = ref([
+  {
+    id: 1,
+    role: 'ai',
+    content: '你好！我是你的私人AI助手。有什么我可以帮你的吗？',
+    timestamp: '10:00',
+    type: 'text'
+  }
+])
+
+// 用户当前输入的文本
+const userInput = ref('')
+
+// AI 是否正在输入 (用于控制 Loading 动画显示)
+const isTyping = ref(false)
+
+// 聊天区域的 DOM 引用 (用于实现自动滚动)
+const chatContainer = ref(null)
+
+// 侧边栏显示状态 (桌面端默认显示，移动端默认隐藏)
+const showSidebar = ref(true)
+
+// 快捷操作按钮配置 (暂未启用，预留功能)
+const quickActions = [
+  { icon: 'fas fa-image', label: '图片', color: 'text-blue-500' },
+  { icon: 'fas fa-microphone', label: '语音', color: 'text-green-500' },
+  { icon: 'fas fa-file-alt', label: '文档', color: 'text-orange-500' }
+]
+
+// =========================================================================
+// 2. 核心逻辑方法 (Core Methods)
+// =========================================================================
+
+/**
+ * 滚动到底部方法
+ * 使用 nextTick 确保在 DOM 更新后执行滚动操作
+ */
+const scrollToBottom = async () => {
+  await nextTick()
+  if (chatContainer.value) {
+    // 设置 scrollTop 为 scrollHeight，即滚动到最底部
+    chatContainer.value.scrollTop = chatContainer.value.scrollHeight
+  }
+}
+
+/**
+ * 发送消息处理函数
+ * 1. 校验输入非空
+ * 2. 添加用户消息到列表
+ * 3. 触发 UI 滚动
+ * 4. 模拟 AI 响应过程 (Loading -> Delay -> Response)
+ */
+const sendMessage = async () => {
+  if (!userInput.value.trim()) return
+
+  // 1. 添加用户消息
+  messages.value.push({
+    id: Date.now(),
+    role: 'user',
+    content: userInput.value,
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    type: 'text'
+  })
+
+  // 暂存输入内容用于模拟回复
+  const tempInput = userInput.value
+  
+  // 清空输入框并滚动
+  userInput.value = ''
+  await scrollToBottom()
+
+  // 2. 开启 AI 正在输入状态 (显示 Loading 动画)
+  isTyping.value = true
+  
+  // 3. 模拟网络请求延迟 (1.5秒)
+  setTimeout(async () => {
+    isTyping.value = false
+    
+    // 4. 添加 AI 回复消息
+    messages.value.push({
+      id: Date.now() + 1,
+      role: 'ai',
+      content: `收到你的消息："${tempInput}"。这是一个模拟回复，基于Vue3构建的界面。`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      type: 'text'
+    })
+    
+    // 再次滚动到底部
+    await scrollToBottom()
+  }, 1500)
+}
+
+/**
+ * 切换侧边栏显示状态
+ * 用于移动端点击汉堡菜单时触发
+ */
+const toggleSidebar = () => {
+  showSidebar.value = !showSidebar.value
+}
+</script>
+
+<template>
+  <!-- 
+    主布局容器 
+    - max-w-[1600px]: 限制最大宽度，避免在大屏上过于拉伸
+    - h-[90vh]: 桌面端高度为视口的 90%
+    - md:rounded-2xl: 桌面端显示圆角
+  -->
+  <div class="flex w-full h-full md:h-[90vh] max-w-[1600px] bg-white md:rounded-2xl shadow-xl overflow-hidden border border-gray-200">
+    
+    <!-- 
+      侧边栏 (Sidebar)
+      - 使用动态 class 控制显示/隐藏
+      - hidden md:flex: 默认在移动端隐藏，桌面端显示 (除非 showSidebar 改变)
+    -->
+    <Sidebar :class="{'hidden md:flex': !showSidebar, 'flex': showSidebar}" class="w-full md:w-80 shrink-0" />
+
+    <!-- 右侧主聊天区域 -->
+    <div class="flex-1 flex flex-col h-full relative bg-gray-50">
+      
+      <!-- 
+        顶部标题栏 (Header)
+        - z-10: 确保阴影覆盖在内容之上
+      -->
+      <div class="h-16 px-6 bg-white border-b border-gray-100 flex items-center justify-between z-10">
+        <div class="flex items-center gap-4">
+          <!-- 移动端侧边栏切换按钮 -->
+          <button @click="toggleSidebar" class="p-2 text-gray-500 hover:bg-gray-100 rounded-lg md:hidden">
+            <i class="fas fa-bars"></i>
+          </button>
+          
+          <!-- AI 助手信息展示 -->
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+              <i class="fas fa-robot text-lg"></i>
+            </div>
+            <div>
+              <h1 class="font-bold text-gray-900 text-lg leading-tight">AI Assistant</h1>
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                <span class="text-xs text-gray-500">Online</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 右侧工具栏按钮 -->
+        <div class="flex items-center gap-3">
+          <button class="w-9 h-9 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 transition-colors">
+            <i class="fas fa-search"></i>
+          </button>
+          <button class="w-9 h-9 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 transition-colors">
+            <i class="fas fa-ellipsis-v"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- 
+        消息流区域 (Messages Area)
+        - flex-1: 占据剩余高度
+        - overflow-y-auto: 内容过多时滚动
+      -->
+      <div ref="chatContainer" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth">
+        <!-- 循环渲染消息气泡 -->
+        <MessageBubble 
+          v-for="msg in messages" 
+          :key="msg.id" 
+          :message="msg" 
+        />
+        
+        <!-- 正在输入提示 (Typing Indicator) -->
+        <div v-if="isTyping" class="flex justify-start animate-fade-in">
+          <div class="bg-white border border-gray-100 rounded-2xl rounded-tl-none py-3 px-4 shadow-sm flex items-center gap-1">
+            <!-- 三个跳动的圆点动画 -->
+            <div class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0s"></div>
+            <div class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+            <div class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 
+        底部输入区域 (Input Area)
+        - border-t: 顶部边框
+      -->
+      <div class="p-4 md:p-6 bg-white border-t border-gray-100">
+        <div class="max-w-4xl mx-auto">
+          <!-- 快捷操作栏 (可选，目前注释掉) -->
+          <!-- <div class="flex gap-2 mb-3 overflow-x-auto pb-2 scrollbar-hide">...</div> -->
+
+          <!-- 输入框容器 -->
+          <div class="relative bg-gray-50 border border-gray-200 rounded-2xl p-2 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all shadow-sm">
+            <!-- 文本域: 支持多行输入 -->
+            <textarea 
+              v-model="userInput"
+              @keydown.enter.prevent="sendMessage"
+              placeholder="发送消息给 AI..." 
+              class="w-full bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[44px] py-2 px-3 text-gray-800 placeholder-gray-400"
+              rows="1"
+            ></textarea>
+            
+            <!-- 底部工具栏与发送按钮 -->
+            <div class="flex items-center justify-between px-2 pb-1">
+              <div class="flex items-center gap-2">
+                 <!-- 多媒体按钮组 -->
+                 <button class="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-colors" title="Upload Image">
+                  <i class="fas fa-image"></i>
+                </button>
+                <button class="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 rounded-full transition-colors" title="Voice Input">
+                  <i class="fas fa-microphone"></i>
+                </button>
+                <button class="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-full transition-colors" title="Attach File">
+                  <i class="fas fa-paperclip"></i>
+                </button>
+              </div>
+              
+              <!-- 发送按钮 -->
+              <button 
+                @click="sendMessage"
+                :disabled="!userInput.trim()"
+                :class="{'opacity-50 cursor-not-allowed': !userInput.trim(), 'hover:bg-blue-600 hover:shadow-lg': userInput.trim()}"
+                class="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 shadow-md"
+              >
+                <i class="fas fa-paper-plane text-sm"></i>
+              </button>
+            </div>
+          </div>
+          
+          <!-- 免责声明 -->
+          <div class="text-center mt-3">
+            <p class="text-xs text-gray-400">AI output may be inaccurate. Please verify important information.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style scoped>
+/* 隐藏滚动条但保留滚动功能的工具类 */
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+</style>

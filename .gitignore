@@ -211,3 +211,8 @@ backend/config/tts/
 
 # Config files (may contain sensitive data)
 backend/config/core_config.json
+
+# Frontend
+node_modules/
+dist/
+.DS_Store
