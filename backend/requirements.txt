@@ -1,7 +1,5 @@
 # llm接口调用
 openai
-# 环境变量
-python-dotenv
 # 谷歌搜索
 google-search-results
 # 日志

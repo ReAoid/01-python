@@ -124,8 +124,6 @@ class SearchAgent:
 
 # 用于测试
 if __name__ == "__main__":
-    import dotenv
-    dotenv.load_dotenv()
     agent = SearchAgent()
     test_query = "2025年英伟达最新的GPU型号是什么"
     print("\n=== 测试搜索功能 ===")

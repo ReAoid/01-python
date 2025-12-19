@@ -170,11 +170,6 @@ if __name__ == '__main__':
         # 初始化日志系统
         setup_logger(log_level="INFO")
 
-        # 加载环境变量 (如果需要)
-        from dotenv import load_dotenv
-
-        load_dotenv()
-
         llm = OpenaiLlm()
 
         # 创建示例消息

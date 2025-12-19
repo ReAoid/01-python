@@ -95,7 +95,7 @@ class JsonConfigSettingsSource(PydanticBaseSettingsSource):
 class Settings(BaseSettings):
     """
     应用全局配置
-    支持从 core_config.json 和 环境变量 (.env) 加载
+    支持从 core_config.json 加载
     """
     # 子模块配置
     llm: LLMConfig = Field(default_factory=LLMConfig)
@@ -108,10 +108,6 @@ class Settings(BaseSettings):
     # 顶层配置 (如果有)
     app_name: str = "灵依"
     
-    # 扁平化映射: 允许通过 LLM_API_KEY 直接设置 api.llm_api_key
-    # 这需要我们在 settings_customise_sources 处理，或者使用 Pydantic 的 extra='ignore' 配合手动映射
-    # 这里我们采用简单的映射属性
-    
     @property
     def LLM_API_KEY(self) -> Optional[str]:
         return self.api.llm_api_key
@@ -121,8 +117,6 @@ class Settings(BaseSettings):
         return self.api.llm_base_url
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
         env_nested_delimiter="__",  # 允许 LLM__DEFAULT_MODEL 覆盖 llm.default_model
         extra="ignore"
     )
@@ -133,13 +127,11 @@ class Settings(BaseSettings):
         settings_cls: Type[BaseSettings],
         init_settings: PydanticBaseSettingsSource,
         env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> Tuple[PydanticBaseSettingsSource, ...]:
         return (
             init_settings,
             env_settings,
-            dotenv_settings,
             JsonConfigSettingsSource(settings_cls), # 我们的自定义 JSON 源
             file_secret_settings,
         )
