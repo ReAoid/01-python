@@ -6,12 +6,12 @@
  * 
  * 主要功能:
  * 1. 消息列表管理 (Messages State): 存储和展示对话历史。
- * 2. 模拟 AI 交互 (Simulation): 模拟发送请求、打字机效果和 AI 回复。
+ * 2. 真实 AI 交互: 通过 WebSocket 与后端通信。
  * 3. 自动滚动 (Auto-scroll): 新消息到来时自动滚动到底部。
  * 4. 响应式侧边栏 (Responsive Sidebar): 在移动端支持抽屉式切换。
  */
 
-import { ref, nextTick, onMounted } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted } from 'vue'
 import MessageBubble from './MessageBubble.vue'
 import Sidebar from './Sidebar.vue'
 
@@ -49,6 +49,14 @@ const chatContainer = ref(null)
 // 侧边栏显示状态 (桌面端默认显示，移动端默认隐藏)
 const showSidebar = ref(true)
 
+// WebSocket 连接实例
+const socket = ref(null)
+const isConnected = ref(false)
+const reconnectInterval = ref(null)
+
+// 角色名称
+const characterName = ref('AI Assistant')
+
 // 快捷操作按钮配置 (暂未启用，预留功能)
 const quickActions = [
   { icon: 'fas fa-image', label: '图片', color: 'text-blue-500' },
@@ -73,59 +81,176 @@ const scrollToBottom = async () => {
 }
 
 /**
+ * WebSocket 连接逻辑
+ */
+const connectWebSocket = () => {
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  // 如果是开发环境，可能需要指定端口 8000
+  const wsHost = import.meta.env.DEV ? 'localhost:8000' : window.location.host;
+  const wsUrl = `${wsProtocol}//${wsHost}/ws/chat`;
+
+  socket.value = new WebSocket(wsUrl);
+
+  socket.value.onopen = () => {
+    console.log('WebSocket connected');
+    isConnected.value = true;
+    if (reconnectInterval.value) {
+      clearInterval(reconnectInterval.value);
+      reconnectInterval.value = null;
+    }
+
+    // 发送初始配置
+    socket.value.send(JSON.stringify({
+        type: "config",
+        data: {
+            input_mode: "text",
+            output_mode: "text_only"
+        }
+    }));
+  };
+
+  socket.value.onmessage = async (event) => {
+    // 处理文本消息 (JSON)
+    if (typeof event.data === 'string') {
+      try {
+        const message = JSON.parse(event.data);
+        handleSocketMessage(message);
+      } catch (e) {
+        console.error('Failed to parse websocket message:', e);
+      }
+    } else {
+      // 处理二进制消息 (音频等)，暂时忽略
+      // console.log('Received binary data:', event.data);
+    }
+  };
+
+  socket.value.onclose = () => {
+    console.log('WebSocket disconnected');
+    isConnected.value = false;
+    // 尝试重连
+    if (!reconnectInterval.value) {
+      reconnectInterval.value = setInterval(() => {
+        console.log('Attempting to reconnect...');
+        connectWebSocket();
+      }, 3000);
+    }
+  };
+
+  socket.value.onerror = (error) => {
+    console.error('WebSocket error:', error);
+  };
+};
+
+/**
+ * 处理 WebSocket 消息
+ */
+const handleSocketMessage = async (message) => {
+  if (message.type === 'text_stream') {
+    const content = message.content;
+    
+    // 停止 "正在输入" 状态
+    isTyping.value = false;
+
+    // 检查最后一条消息是否是 AI 的
+    const lastMessage = messages.value[messages.value.length - 1];
+    
+    if (lastMessage && lastMessage.role === 'ai' && !lastMessage.isComplete) {
+      // 追加内容
+      lastMessage.content += content;
+    } else {
+      // 创建新的 AI 消息
+      messages.value.push({
+        id: Date.now(),
+        role: 'ai',
+        content: content,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: 'text',
+        isComplete: false // 标记消息是否正在接收中
+      });
+    }
+    await scrollToBottom();
+  } else if (message.type === 'pong') {
+    // 心跳回应
+  } else if (message.type === 'state_change') {
+      console.log('Backend state changed:', message.state);
+  }
+};
+
+/**
  * 发送消息处理函数
- * 1. 校验输入非空
- * 2. 添加用户消息到列表
- * 3. 触发 UI 滚动
- * 4. 模拟 AI 响应过程 (Loading -> Delay -> Response)
  */
 const sendMessage = async () => {
-  if (!userInput.value.trim()) return
+  if (!userInput.value.trim()) return;
+  if (!isConnected.value) {
+    alert('未连接到服务器，请稍后重试');
+    return;
+  }
+
+  const content = userInput.value;
 
   // 1. 添加用户消息
   messages.value.push({
     id: Date.now(),
     role: 'user',
-    content: userInput.value,
+    content: content,
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     type: 'text'
-  })
+  });
 
-  // 暂存输入内容用于模拟回复
-  const tempInput = userInput.value
-  
+  // 标记上一条 AI 消息为已完成（如果有），防止追加到错误的 bubble
+  const lastMessage = messages.value[messages.value.length - 2]; // -1 is user, -2 is ai
+  if (lastMessage && lastMessage.role === 'ai') {
+    lastMessage.isComplete = true;
+  }
+
   // 清空输入框并滚动
-  userInput.value = ''
-  await scrollToBottom()
+  userInput.value = '';
+  await scrollToBottom();
 
-  // 2. 开启 AI 正在输入状态 (显示 Loading 动画)
-  isTyping.value = true
+  // 2. 开启 AI 正在输入状态
+  isTyping.value = true;
   
-  // 3. 模拟网络请求延迟 (1.5秒)
-  setTimeout(async () => {
-    isTyping.value = false
-    
-    // 4. 添加 AI 回复消息
-    messages.value.push({
-      id: Date.now() + 1,
-      role: 'ai',
-      content: `收到你的消息："${tempInput}"。这是一个模拟回复，基于Vue3构建的界面。`,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      type: 'text'
-    })
-    
-    // 再次滚动到底部
-    await scrollToBottom()
-  }, 1500)
-}
+  // 3. 发送 WebSocket 消息
+  // 对应后端 backend/brain.py 中 _dispatch_action 处理的 "user_text"
+  socket.value.send(JSON.stringify({
+    type: "user_text",
+    content: content
+  }));
+};
 
 /**
  * 切换侧边栏显示状态
- * 用于移动端点击汉堡菜单时触发
  */
 const toggleSidebar = () => {
   showSidebar.value = !showSidebar.value
 }
+
+// 生命周期钩子
+onMounted(async () => {
+  // 获取配置
+  try {
+      const res = await fetch('/api/config/page_config');
+      if (res.ok) {
+          const data = await res.json();
+          if (data.character_name) {
+              characterName.value = data.character_name;
+          }
+      }
+  } catch (e) {
+      console.warn('Failed to load character config, using default.', e);
+  }
+
+  connectWebSocket();
+});
+
+onUnmounted(() => {
+  if (socket.value) {
+    socket.value.close();
+  }
+  if (reconnectInterval.value) {
+    clearInterval(reconnectInterval.value);
+  }
+});
 </script>
 
 <template>
@@ -164,10 +289,10 @@ const toggleSidebar = () => {
               <i class="fas fa-robot text-lg"></i>
             </div>
             <div>
-              <h1 class="font-bold text-gray-900 text-lg leading-tight">AI Assistant</h1>
+              <h1 class="font-bold text-gray-900 text-lg leading-tight">{{ characterName }}</h1>
               <div class="flex items-center gap-2">
-                <span class="w-2 h-2 bg-green-500 rounded-full"></span>
-                <span class="text-xs text-gray-500">Online</span>
+                <span class="w-2 h-2 rounded-full" :class="isConnected ? 'bg-green-500' : 'bg-red-500'"></span>
+                <span class="text-xs text-gray-500">{{ isConnected ? 'Online' : 'Offline' }}</span>
               </div>
             </div>
           </div>
@@ -246,8 +371,8 @@ const toggleSidebar = () => {
               <!-- 发送按钮 -->
               <button 
                 @click="sendMessage"
-                :disabled="!userInput.trim()"
-                :class="{'opacity-50 cursor-not-allowed': !userInput.trim(), 'hover:bg-blue-600 hover:shadow-lg': userInput.trim()}"
+                :disabled="!userInput.trim() || !isConnected"
+                :class="{'opacity-50 cursor-not-allowed': !userInput.trim() || !isConnected, 'hover:bg-blue-600 hover:shadow-lg': userInput.trim() && isConnected}"
                 class="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 shadow-md"
               >
                 <i class="fas fa-paper-plane text-sm"></i>
