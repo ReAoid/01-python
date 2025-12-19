@@ -4,7 +4,7 @@ from openai import OpenAI, AsyncOpenAI
 from loguru import logger
 from backend.core.message import Message
 from backend.core.llm import Llm
-from backend.utils.config_manager import get_core_config
+from backend.config import settings
 
 
 class OpenaiLlm(Llm):
@@ -23,15 +23,17 @@ class OpenaiLlm(Llm):
             base_url: API服务地址
             timeout: 超时时间(秒)
         """
-        config = get_core_config()
-
-        self.model = model or config.get("LLM_MODEL_ID")
-        api_key = api_key or config.get("LLM_API_KEY")
-        base_url = base_url or config.get("LLM_BASE_URL")
-        timeout = timeout or config.get("LLM_TIMEOUT", 60)
+        self.model = model or settings.llm.default_model
+        api_key = api_key or settings.api.llm_api_key
+        base_url = base_url or settings.api.llm_base_url
+        timeout = timeout or settings.api.llm_timeout
 
         if not all([self.model, api_key, base_url]):
-            raise ValueError("模型ID、API密钥和服务地址必须被提供或在配置文件/环境变量中定义。")
+            error_msg = (
+                "❌ 配置错误: 缺少必要的 LLM 配置！"
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
 
         self.client = OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
         self.async_client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
@@ -59,8 +61,7 @@ class OpenaiLlm(Llm):
         Returns:
             Message: 完整的响应消息
         """
-        config = get_core_config()
-        default_temp = config.get("TEMPERATURE", 0.7)
+        default_temp = settings.llm.temperature
         temperature = kwargs.get("temperature", default_temp)
 
         logger.info(f"正在调用 {self.model} 模型(非流式)...")
@@ -95,8 +96,7 @@ class OpenaiLlm(Llm):
         Yields:
             str: 流式生成的文本片段
         """
-        config = get_core_config()
-        default_temp = config.get("TEMPERATURE", 0.7)
+        default_temp = settings.llm.temperature
         temperature = kwargs.get("temperature", default_temp)
 
         logger.info(f"正在调用 {self.model} 模型(流式)...")
@@ -134,8 +134,7 @@ class OpenaiLlm(Llm):
         Yields:
             str: 流式生成的文本片段
         """
-        config = get_core_config()
-        default_temp = config.get("TEMPERATURE", 0.7)
+        default_temp = settings.llm.temperature
         temperature = kwargs.get("temperature", default_temp)
 
         logger.info(f"正在异步调用 {self.model} 模型(流式)...")

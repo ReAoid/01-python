@@ -12,9 +12,11 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from backend.config import settings
+
 # 配置日志
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, settings.system.log_level.upper(), logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -80,9 +82,11 @@ async def health_check():
 @app.get("/api/config/page_config")
 async def get_page_config():
     """获取页面配置"""
+    char_name = settings.tts.active_character
+    # 假设模型路径遵循约定
     return JSONResponse({
-        "character_name": "feibi",
-        "model_path": "/static/live2d/feibi/feibi.model3.json"
+        "character_name": char_name,
+        "model_path": f"/static/live2d/{char_name}/{char_name}.model3.json"
     })
 
 

@@ -8,6 +8,7 @@ google-search-results
 loguru
 # 数据模型
 pydantic
+pydantic-settings
 # 向量计算
 numpy
 # TTS

@@ -225,15 +225,7 @@ class TTSService:
         genie_data_dir = None
         
         # 1. 从配置对象读取基础信息
-        # 优先使用 ConfigManager 的 get_tts_config 接口
-        if hasattr(self.config, 'get_tts_config'):
-            c = self.config.get_tts_config()
-            enabled = c.get('enabled', enabled)
-            host = c.get('server_host', host)
-            port = c.get('server_port', port)
-            character = c.get('active_character', character)
-            genie_data_dir = c.get('genie_data_dir')
-        elif isinstance(self.config, dict):
+        if isinstance(self.config, dict):
             # 兼容字典配置 (测试或简单调用)
             tts = self.config.get('tts', self.config)
             server = tts.get('server', {}) if 'server' in tts else tts
@@ -245,17 +237,31 @@ class TTSService:
             # 尝试从不同位置获取 host/port
             host = server.get('host', tts.get('server_host', host))
             port = server.get('port', tts.get('server_port', port))
+        else:
+            # Pydantic Settings 对象
+            t = self.config.tts
+            enabled = t.enabled
+            host = t.server.host
+            port = t.server.port
+            character = t.active_character
+            genie_data_dir = t.genie_data_dir
 
         # 2. 确定数据目录路径
-        if not genie_data_dir:
-            # 回退到默认路径: backend/config/tts
-            current_file = Path(__file__)
-            genie_data_dir = str(current_file.parent.parent / "config" / "tts")
-            
+        # 尝试查找有效的 TTS 目录 (使用项目目录)
+        from backend.config.manager import get_config_manager
+        tts_base_dir = get_config_manager().get_tts_base_dir()
+        
+        if genie_data_dir:
+            # 如果配置显式指定了路径，则使用配置的路径
+            genie_data_dir = str(genie_data_dir)
+        else:
+            # 否则使用项目源码中的 TTS 目录
+            genie_data_dir = str(tts_base_dir)
+
         # 3. 根据 character 查找文件配置
-        # 路径结构: {genie_data_dir}/CharacterModels/v2ProPlus/{character}/
+        # 路径结构: {tts_base_dir}/CharacterModels/v2ProPlus/{character}/
         try:
-            base_dir = Path(genie_data_dir)
+            base_dir = tts_base_dir # 使用计算出的 base_dir
             character_dir = base_dir / "CharacterModels" / "v2ProPlus" / character
             prompt_config_path = character_dir / "prompt_wav.json"
             

@@ -276,14 +276,12 @@ def start_genie_server_standalone(
     
     # 读取配置
     try:
-        from .config_manager import get_config_manager
-        config_manager = get_config_manager()
-        tts_config = config_manager.get_tts_config()
+        from backend.config import settings
         
         # 使用配置文件的值作为默认值
-        host = host or tts_config.get('server_host', '127.0.0.1')
-        port = port or tts_config.get('server_port', 8001)
-        genie_data_dir = genie_data_dir or tts_config.get('genie_data_dir')
+        host = host or settings.tts.server.host
+        port = port or settings.tts.server.port
+        genie_data_dir = genie_data_dir or settings.tts.genie_data_dir
         
         logger.info(f"从配置文件加载 TTS 设置: host={host}, port={port}, data_dir={genie_data_dir}")
     except Exception as e:
@@ -414,12 +412,10 @@ if __name__ == "__main__":
     default_data_dir = "backend/config/tts/GenieData"
     
     try:
-        from config_manager import get_config_manager
-        config_manager = get_config_manager()
-        tts_config = config_manager.get_tts_config()
-        default_host = tts_config.get('server_host', default_host)
-        default_port = tts_config.get('server_port', default_port)
-        default_data_dir = tts_config.get('genie_data_dir', default_data_dir)
+        from backend.config import settings
+        default_host = settings.tts.server.host
+        default_port = settings.tts.server.port
+        default_data_dir = settings.tts.genie_data_dir or default_data_dir
     except Exception:
         pass  # 忽略配置加载错误，使用硬编码默认值
     

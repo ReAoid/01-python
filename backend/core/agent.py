@@ -3,7 +3,7 @@ from typing import List, Optional, Dict, Any
 
 from backend.core.llm import Llm
 from backend.core.message import Message
-from backend.utils.config_manager import get_core_config
+from backend.config import settings
 
 
 class Agent(ABC):
@@ -20,7 +20,7 @@ class Agent(ABC):
         self.llm = llm
         self.system_prompt = system_prompt
         # 使用 config_manager 读取配置，允许传入自定义配置覆盖
-        self.config = config or get_core_config()
+        self.config = config or settings
         self._history: List[Message] = []
 
     @abstractmethod

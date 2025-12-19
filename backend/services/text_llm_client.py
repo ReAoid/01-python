@@ -3,7 +3,7 @@ import logging
 from typing import List, Dict, Optional
 from backend.utils.openai_llm import OpenaiLlm
 from backend.core.message import Message
-from backend.utils.config_manager import get_core_config
+from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +19,7 @@ class TextLLMClient:
             system_prompt: Optional[str] = None
     ):
         # 1. 配置加载
-        self.core_config = get_core_config()
-        self.max_history = self.core_config.get("MAX_HISTORY_LENGTH", 20)
+        self.max_history = settings.memory.max_history_length
 
         # 2. 初始化 LLM
         self.llm = OpenaiLlm()

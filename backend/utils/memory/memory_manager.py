@@ -6,7 +6,7 @@ from backend.core.llm import Llm
 from backend.utils.openai_llm import OpenaiLlm
 from backend.utils.memory.short_term import ShortTermMemory
 from backend.utils.memory.vector_store import VectorStore
-from backend.utils.config_manager import get_core_config
+from backend.config import settings
 
 class MemoryManager:
     """
@@ -30,8 +30,7 @@ class MemoryManager:
         self.short_term = ShortTermMemory()
         
         # 从配置管理器读取 embedding 模型配置
-        config = get_core_config()
-        self.embedding_model = config.get("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-8B")
+        self.embedding_model = settings.memory.embedding_model
         
         # 定义 embedding 函数
         def openai_embedding_func(text: str) -> List[float]:

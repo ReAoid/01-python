@@ -4,7 +4,7 @@ import numpy as np
 from typing import List, Dict, Any, Callable, Optional
 from loguru import logger
 
-from backend.utils.config_manager import get_core_config
+from backend.config import migration
 
 class VectorStore:
     """
@@ -26,8 +26,7 @@ class VectorStore:
             embedding_func: 用于生成文本向量的函数，接收字符串返回浮点数列表
         """
         if file_path is None:
-            config = get_core_config()
-            file_path = config.get("MEMORY_STORE_PATH")
+            file_path = str(migration.user_memory_dir / "memory_store.json")
             
             # 确保存储目录存在
             store_dir = os.path.dirname(file_path)

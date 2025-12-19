@@ -9,7 +9,7 @@ import re
 from fastapi import WebSocket, WebSocketDisconnect
 
 # 引入项目现有组件
-from backend.utils.config_manager import get_config_manager
+from backend.config import settings
 
 # 引入服务组件
 from backend.services.asr_service import ASRService
@@ -59,10 +59,10 @@ class SessionManager:
         
         Args:
             message_queue: 用于与 Agent/Monitor 通信的异步队列
-            config_loader: 配置加载器,如果未提供则使用默认配置管理器
+            config_loader: 配置加载器 (已废弃，保留兼容性)
         """
         # 加载配置
-        self.config_manager = config_loader or get_config_manager()
+        self.config = settings
         # 用于与 Agent/Monitor 通信
         self.queue = message_queue
 
@@ -74,8 +74,8 @@ class SessionManager:
             "sample_width": 2
         }
         self.asr = ASRService(asr_config)
-        # TTSService 需要 ConfigManager 对象(它内部会调用 get_tts_config)
-        self.tts = TTSService(self.config_manager)
+        # TTSService 使用 settings 对象
+        self.tts = TTSService(self.config)
 
         # --- 双 Session 架构 (实现热切换) ---
         self.current_llm: Optional[TextLLMClient] = None  # 当前服务中的 LLM
