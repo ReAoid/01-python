@@ -18,3 +18,6 @@ pyaudio
 aiohttp
 # WebSocket 支持
 websockets
+# Web 框架
+fastapi
+uvicorn
