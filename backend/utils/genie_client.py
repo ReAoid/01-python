@@ -352,7 +352,19 @@ def start_genie_server_standalone(
     except Exception as e:
         logger.error(f"导入 genie_tts 失败: {e}")
         raise
-    
+
+    # 检查 CharacterModels 是否存在，如果不存在则下载默认角色
+    # 注意：genie_data_path 在上面已经定义
+    character_models_path = genie_data_path / 'CharacterModels'
+    if not character_models_path.exists():
+        logger.info("未检测到角色模型目录，正在下载默认角色 'feibi'...")
+        try:
+            # load_predefined_character 会自动下载模型文件
+            genie.load_predefined_character('feibi')
+            logger.info("✓ 默认角色 'feibi' 下载完成")
+        except Exception as e:
+            logger.warning(f"下载默认角色失败: {e}")
+
     logger.info(f"启动 Genie TTS 服务器 {host}:{port} (workers={workers})...")
     
     # 设置信号处理器，确保优雅关闭
