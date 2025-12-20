@@ -257,6 +257,79 @@ class GenieTTS:
 # 可选：Genie TTS 服务器管理功能（如果需要在代码中启动服务器）
 # ============================================================================
 
+def ensure_genie_data(genie_data_dir: Optional[str] = None) -> Path:
+    """
+    确保 GenieData 目录及其必要的子目录（包括 CharacterModels）存在。
+    如果不存在，则尝试下载。
+    返回 GenieData 的绝对路径。
+    """
+    # 确定 genie_data_dir
+    if genie_data_dir:
+        genie_data_path = Path(genie_data_dir)
+        if not genie_data_path.is_absolute():
+             # 如果是相对路径，转换为绝对路径（相对于项目根目录）
+            project_root = Path(__file__).parent.parent.parent
+            genie_data_path = project_root / genie_data_dir
+        
+        # 确保路径指向 GenieData 目录（如果配置的是父目录，自动加上 GenieData）
+        if genie_data_path.name != 'GenieData':
+             genie_data_path = genie_data_path / 'GenieData'
+    else:
+        # 如果没有指定，自动使用 backend/config/tts/GenieData 作为默认位置
+        if os.environ.get('GENIE_DATA_DIR'):
+            genie_data_path = Path(os.environ['GENIE_DATA_DIR'])
+        else:
+            default_data_dir = Path(__file__).parent.parent / 'config' / 'tts' / 'GenieData'
+            genie_data_path = default_data_dir
+    
+    # 设置环境变量（因为 genie_tts 库可能会用到）
+    os.environ['GENIE_DATA_DIR'] = str(genie_data_path.resolve())
+    logger.info(f"使用 GENIE_DATA_DIR={genie_data_path.resolve()}")
+    
+    # 检查 GenieData/chinese-hubert-base
+    if not genie_data_path.exists() or not (genie_data_path / 'chinese-hubert-base').exists():
+        logger.warning(f"检测到 GenieData 不存在或不完整 ({genie_data_path})，正在自动下载...")
+        try:
+             from huggingface_hub import snapshot_download
+        except ImportError:
+             logger.error("错误: 未找到 huggingface_hub 模块")
+             logger.error("安装命令: pip install huggingface-hub")
+             raise ImportError("huggingface_hub module not found")
+
+        try:
+            logger.info("🚀 开始下载 Genie-TTS 资源... 这可能需要几分钟 ⏳")
+            genie_data_path.parent.mkdir(parents=True, exist_ok=True)
+            snapshot_download(
+                repo_id="High-Logic/Genie",
+                repo_type="model",
+                allow_patterns="GenieData/*",
+                local_dir=str(genie_data_path.parent),
+                local_dir_use_symlinks=False,
+            )
+            logger.info("✅ Genie-TTS 资源下载完成")
+        except Exception as e:
+            logger.error(f"下载 Genie-TTS 资源失败: {e}")
+            logger.error("请手动下载或设置 GENIE_DATA_DIR 环境变量")
+            raise
+
+    # 检查 CharacterModels
+    try:
+        import genie_tts as genie
+        character_models_path = genie_data_path / 'CharacterModels'
+        if not character_models_path.exists():
+            logger.info("未检测到角色模型目录，正在下载默认角色 'feibi'...")
+            try:
+                genie.load_predefined_character('feibi')
+                logger.info("✓ 默认角色 'feibi' 下载完成")
+            except Exception as e:
+                logger.warning(f"下载默认角色失败: {e}")
+    except ImportError:
+         logger.warning("未找到 genie_tts 模块，跳过 CharacterModels 检查")
+    except Exception as e:
+         logger.warning(f"检查 CharacterModels 时出错: {e}")
+
+    return genie_data_path.resolve()
+
 def start_genie_server_standalone(
     host: str = None, 
     port: int = None, 
@@ -289,59 +362,13 @@ def start_genie_server_standalone(
         # 回退到默认值
         host = host or '127.0.0.1'
         port = port or 8001
-        # 如果没有配置，使用默认路径
-        if not genie_data_dir:
-            genie_data_dir = str(Path(__file__).parent.parent / 'config' / 'tts' / 'GenieData')
-
-    # 设置环境变量（必须在导入 genie_tts 之前设置）
-    if genie_data_dir:
-        genie_data_path = Path(genie_data_dir)
-        if not genie_data_path.is_absolute():
-            # 如果是相对路径，转换为绝对路径（相对于项目根目录）
-            project_root = Path(__file__).parent.parent.parent
-            genie_data_path = project_root / genie_data_dir
-        
-        # 确保路径指向 GenieData 目录（如果配置的是父目录，自动加上 GenieData）
-        if genie_data_path.name != 'GenieData':
-            genie_data_path = genie_data_path / 'GenieData'
-        
-        os.environ['GENIE_DATA_DIR'] = str(genie_data_path.resolve())
-        logger.info(f"设置 GENIE_DATA_DIR={genie_data_path.resolve()}")
-    elif not os.environ.get('GENIE_DATA_DIR'):
-        # 如果没有指定，自动使用 backend/config/tts/GenieData 作为默认位置
-        default_data_dir = Path(__file__).parent.parent / 'config' / 'tts' / 'GenieData'
-        os.environ['GENIE_DATA_DIR'] = str(default_data_dir.resolve())
-        logger.info(f"自动设置 GENIE_DATA_DIR={default_data_dir.resolve()}（首次启动会自动下载模型）")
     
-    # 检查 GenieData 目录是否存在，如果不存在则自动下载
-    genie_data_path = Path(os.environ['GENIE_DATA_DIR'])
-    if not genie_data_path.exists() or not (genie_data_path / 'chinese-hubert-base').exists():
-        logger.warning("检测到 GenieData 不存在或不完整，正在自动下载...")
-        try:
-            # 先导入下载函数（这不会触发检查）
-            from huggingface_hub import snapshot_download
-        except ImportError:
-            logger.error("错误: 未找到 huggingface_hub 模块")
-            logger.error("安装命令: pip install huggingface-hub")
-            sys.exit(1)
-        
-        try:
-            logger.info("🚀 开始下载 Genie-TTS 资源... 这可能需要几分钟 ⏳")
-            # 创建父目录
-            genie_data_path.parent.mkdir(parents=True, exist_ok=True)
-            # 下载到 tts 目录（HuggingFace 会自动创建 GenieData 子目录）
-            snapshot_download(
-                repo_id="High-Logic/Genie",
-                repo_type="model",
-                allow_patterns="GenieData/*",
-                local_dir=str(genie_data_path.parent),
-                local_dir_use_symlinks=False,
-            )
-            logger.info("✅ Genie-TTS 资源下载完成")
-        except Exception as e:
-            logger.error(f"下载 Genie-TTS 资源失败: {e}")
-            logger.error("请手动下载或设置 GENIE_DATA_DIR 环境变量")
-            sys.exit(1)
+    # 确保数据目录存在并设置环境变量
+    try:
+        ensure_genie_data(genie_data_dir)
+    except Exception as e:
+        logger.error(f"初始化 GenieData 失败: {e}")
+        sys.exit(1)
 
     try:
         import genie_tts as genie
@@ -352,18 +379,6 @@ def start_genie_server_standalone(
     except Exception as e:
         logger.error(f"导入 genie_tts 失败: {e}")
         raise
-
-    # 检查 CharacterModels 是否存在，如果不存在则下载默认角色
-    # 注意：genie_data_path 在上面已经定义
-    character_models_path = genie_data_path / 'CharacterModels'
-    if not character_models_path.exists():
-        logger.info("未检测到角色模型目录，正在下载默认角色 'feibi'...")
-        try:
-            # load_predefined_character 会自动下载模型文件
-            genie.load_predefined_character('feibi')
-            logger.info("✓ 默认角色 'feibi' 下载完成")
-        except Exception as e:
-            logger.warning(f"下载默认角色失败: {e}")
 
     logger.info(f"启动 Genie TTS 服务器 {host}:{port} (workers={workers})...")
     

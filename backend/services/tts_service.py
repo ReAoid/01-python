@@ -10,7 +10,7 @@ from pathlib import Path
 from multiprocessing import Process, Queue
 from typing import Optional, Callable, Dict, Any, Union, Tuple
 
-from backend.utils.genie_client import GenieTTS
+from backend.utils.genie_client import GenieTTS, ensure_genie_data
 
 logger = logging.getLogger(__name__)
 
@@ -251,17 +251,26 @@ class TTSService:
         from backend.config.manager import get_config_manager
         tts_base_dir = get_config_manager().get_tts_base_dir()
         
+        # 确定目标目录（但还未确认存在）
         if genie_data_dir:
-            # 如果配置显式指定了路径，则使用配置的路径
-            genie_data_dir = str(genie_data_dir)
+            target_dir = str(genie_data_dir)
         else:
-            # 否则使用项目源码中的 TTS 目录
-            genie_data_dir = str(tts_base_dir)
+            # 否则使用项目源码中的 TTS 目录下的 GenieData
+            target_dir = str(tts_base_dir / "GenieData")
+
+        # 确保数据目录存在（并处理环境变量和下载）
+        try:
+            # 这一步会下载模型如果不存在
+            genie_data_path = ensure_genie_data(target_dir)
+            genie_data_dir = str(genie_data_path)
+        except Exception as e:
+            logger.warning(f"自动检查/下载模型失败: {e}")
+            genie_data_dir = target_dir
 
         # 3. 根据 character 查找文件配置
-        # 路径结构: {tts_base_dir}/CharacterModels/v2ProPlus/{character}/
+        # 路径结构: {genie_data_dir}/CharacterModels/v2ProPlus/{character}/
         try:
-            base_dir = tts_base_dir # 使用计算出的 base_dir
+            base_dir = Path(genie_data_dir) # 使用 genie_data_dir 作为基准
             character_dir = base_dir / "CharacterModels" / "v2ProPlus" / character
             prompt_config_path = character_dir / "prompt_wav.json"
             
