@@ -279,7 +279,15 @@ class SessionManager:
                     pass
             if "output_mode" in data:
                 try:
-                    self.output_mode = OutputMode(data["output_mode"])
+                    new_mode = OutputMode(data["output_mode"])
+                    
+                    # 关键修复：如果切换到含音频模式且 TTS 未运行，则立即启动
+                    if new_mode == OutputMode.TEXT_AND_AUDIO and not self.tts.running:
+                        logger.info("Switching to Audio mode: Lazy starting TTS service...")
+                        # 启动 TTS，传入音频回调
+                        await self.tts.start(on_audio=self._send_audio_to_frontend)
+                        
+                    self.output_mode = new_mode
                 except ValueError:
                     pass
             
