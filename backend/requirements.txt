@@ -1,22 +1,32 @@
-# llm接口调用
-openai
+# LLM 接口调用 (推荐使用 1.x 以上版本)
+openai>=1.60.0
+
 # 谷歌搜索
-google-search-results
+google-search-results>=2.4.0
+
 # 日志
-loguru
-# 数据模型
-pydantic
-pydantic-settings
-# 向量计算
-numpy
+loguru>=0.7.0
+
+# 数据模型 (Pydantic v2)
+pydantic>=2.10.0
+# Pydantic Settings (2.3.0+ 引入了 dotenv_settings 参数，推荐 2.7+)
+pydantic-settings>=2.7.0
+
+# 向量计算 (Python 3.12 建议 numpy >= 1.26.0)
+numpy>=1.26.0
+
 # TTS
-genie-tts
+genie-tts>=2.0.2
+
 # 音频处理
-pyaudio
+pyaudio>=0.2.14
+
 # 异步 HTTP 客户端
-aiohttp
+aiohttp>=3.9.0
+
 # WebSocket 支持
-websockets
+websockets>=12.0
+
 # Web 框架
-fastapi
-uvicorn
+fastapi>=0.110.0
+uvicorn>=0.28.0

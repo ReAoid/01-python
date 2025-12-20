@@ -127,12 +127,14 @@ class Settings(BaseSettings):
         settings_cls: Type[BaseSettings],
         init_settings: PydanticBaseSettingsSource,
         env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> Tuple[PydanticBaseSettingsSource, ...]:
         return (
             init_settings,
             env_settings,
-            JsonConfigSettingsSource(settings_cls), # 我们的自定义 JSON 源
+            dotenv_settings,
+            JsonConfigSettingsSource(settings_cls),  # 我们的自定义 JSON 源
             file_secret_settings,
         )
 
