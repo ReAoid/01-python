@@ -488,9 +488,12 @@ class SessionManager:
                             remaining = buffer[end_pos:]
 
                             # 发送完整句子给 TTS
-                            if sentence.strip():
-                                logger.info(f"Sending sentence to TTS: {sentence[:20]}...")
+                            if sentence.strip() and not re.fullmatch(r'[^\w\s]+', sentence.strip()):
+                                # logger.info(f"Sending sentence to TTS: {sentence[:20]}...")
                                 await self.tts.push_text(sentence)
+                            else:
+                                pass
+                                # logger.debug(f"Skipping punctuation-only sentence: {sentence[:20]}")
 
                             buffer = remaining
                         else:
@@ -502,9 +505,13 @@ class SessionManager:
 
             # 循环结束 (None)
             # 处理 buffer 中剩余的内容 (仅在需要音频输出时)
-            if self.output_mode == OutputMode.TEXT_AND_AUDIO and buffer.strip():
-                logger.info(f"Sending remaining buffer to TTS: {buffer[:20]}...")
-                await self.tts.push_text(buffer)
+            if self.output_mode == OutputMode.TEXT_AND_AUDIO:
+                if buffer.strip() and not re.fullmatch(r'[^\w\s]+', buffer.strip()):
+                    # logger.info(f"Sending remaining buffer to TTS: {buffer[:20]}...")
+                    await self.tts.push_text(buffer)
+                else:
+                    pass
+                    # logger.debug(f"Skipping punctuation-only buffer: {buffer[:20]}")
 
             # 触发完成处理
             await self._handle_llm_complete(full_response)

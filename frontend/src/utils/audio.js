@@ -115,9 +115,9 @@ export class AudioManager {
             
             // 调试：每 100 次回调 (约 8-9秒) 打印一次状态，或者在刚开始时打印
             debugCounter++;
-            if (debugCounter === 1 || debugCounter % 100 === 0) {
-                 console.log(`[AudioDebug] ctx.state=${this.audioContext.state}, ctx.rate=${this.audioContext.sampleRate}, queueLen=${this.audioQueue.length}, leftover=${this.resampleLeftover ? this.resampleLeftover.length : 0}`);
-            }
+            // if (debugCounter === 1 || debugCounter % 100 === 0) {
+            //      console.log(`[AudioDebug] ctx.state=${this.audioContext.state}, ctx.rate=${this.audioContext.sampleRate}, queueLen=${this.audioQueue.length}, leftover=${this.resampleLeftover ? this.resampleLeftover.length : 0}`);
+            // }
 
             // [关键] 如果 queue 为空且没有 leftover，直接填充静音并返回
             // 避免下面的逻辑在没有数据时产生错误的静音处理或死循环
@@ -125,9 +125,9 @@ export class AudioManager {
                 for (let i = 0; i < outputLength; i++) {
                     outputData[i] = 0;
                 }
-                if (debugCounter % 50 === 0) {
-                     console.debug("[AudioManager] Buffer underrun (Empty)");
-                }
+                // if (debugCounter % 50 === 0) {
+                //      console.debug("[AudioManager] Buffer underrun (Empty)");
+                // }
                 return;
             }
 
