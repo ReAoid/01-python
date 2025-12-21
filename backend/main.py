@@ -52,6 +52,11 @@ frontend_path = project_root / "frontend"
 async def startup_event():
     """启动后台服务。"""
     logger.info("正在初始化后台服务...")
+    
+    # 打印静态文件目录信息 (移到此处避免多进程重复打印)
+    if frontend_path.exists():
+        logger.info(f"静态文件目录: {frontend_path}")
+
     try:
         # 初始化服务 (它们会自动订阅事件总线)
         # 存储在 app.state 中以保持引用存活
@@ -126,7 +131,13 @@ async def websocket_chat(websocket: WebSocket):
     logger.info("WebSocket 连接已建立")
     
     queue = asyncio.Queue()
-    session = SessionManager(message_queue=queue)
+    
+    # 尝试复用全局 MemoryManager
+    memory_manager = None
+    if hasattr(app.state, "memory_service") and app.state.memory_service:
+        memory_manager = app.state.memory_service.memory_manager
+
+    session = SessionManager(message_queue=queue, memory_manager=memory_manager)
     
     try:
         await session.start(websocket)
@@ -147,7 +158,7 @@ async def websocket_chat(websocket: WebSocket):
 # 挂载静态文件（必须在路由定义之后）
 if frontend_path.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_path)), name="static")
-    logger.info(f"静态文件目录: {frontend_path}")
+    # logger.info(f"静态文件目录: {frontend_path}")  <-- 已移至 startup_event
 
 # ============================================================================
 # 启动服务器
