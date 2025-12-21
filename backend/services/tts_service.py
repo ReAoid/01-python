@@ -352,9 +352,10 @@ class TTSService:
 
         # 等待就绪信号（非阻塞）
         try:
-            ready = await self._wait_for_ready_signal(timeout=8.0)
+            # 增加超时时间以适应首次模型加载或慢速机器
+            ready = await self._wait_for_ready_signal(timeout=30.0)
             if not ready:
-                logger.error("❌ TTS 进程初始化失败")
+                logger.error("❌ TTS 进程初始化失败 (超时或错误)")
                 # 如果失败，我们不标记为就绪
                 return
         except Exception as e:
