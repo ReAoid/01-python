@@ -11,13 +11,16 @@
  * 4. 响应式侧边栏 (Responsive Sidebar): 在移动端支持抽屉式切换。
  */
 
-import { ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import MessageBubble from './MessageBubble.vue'
 import Sidebar from './Sidebar.vue'
+import { AudioManager } from '../utils/audio.js'
 
 // =========================================================================
 // 1. 状态定义 (State Definitions)
 // =========================================================================
+
+const audioManager = new AudioManager()
 
 /**
  * 消息列表数据
@@ -57,6 +60,10 @@ const reconnectInterval = ref(null)
 // 角色名称
 const characterName = ref('AI Assistant')
 
+// 语音相关状态
+const isVoiceMode = ref(false) // 是否开启语音回复 (TTS)
+const isRecording = ref(false) // 是否正在录音
+
 // 快捷操作按钮配置 (暂未启用，预留功能)
 const quickActions = [
   { icon: 'fas fa-image', label: '图片', color: 'text-blue-500' },
@@ -67,6 +74,62 @@ const quickActions = [
 // =========================================================================
 // 2. 核心逻辑方法 (Core Methods)
 // =========================================================================
+
+/**
+ * 发送配置到后端
+ */
+const sendConfig = () => {
+    if (!socket.value || socket.value.readyState !== WebSocket.OPEN) return;
+    
+    socket.value.send(JSON.stringify({
+        type: "config",
+        data: {
+            input_mode: isRecording.value ? "audio" : "text",
+            output_mode: isVoiceMode.value ? "text_audio" : "text_only"
+        }
+    }));
+};
+
+/**
+ * 切换语音模式
+ */
+const toggleVoiceMode = () => {
+    isVoiceMode.value = !isVoiceMode.value;
+    sendConfig();
+};
+
+/**
+ * 切换录音状态
+ */
+const toggleRecording = async () => {
+    if (isRecording.value) {
+        // 停止录音
+        audioManager.stopRecording();
+        isRecording.value = false;
+        
+        // 发送空文本，虽然不需要，但可以作为一种状态结束的标志? 
+        // 其实不需要，ASR 服务通常有 VAD，但主动停止更安全
+        // 目前后端 ASR 是流式的，停止发送 PCM 数据即可。
+    } else {
+        // 开始录音
+        try {
+            await audioManager.startRecording((pcmData) => {
+                if (socket.value && socket.value.readyState === WebSocket.OPEN) {
+                    socket.value.send(pcmData);
+                }
+            });
+            isRecording.value = true;
+            
+            // 确保后端知道我们开始语音输入了 (更新 input_mode)
+            // 虽然不更新也能工作（后端会自动识别二进制帧），但更新状态更规范
+            sendConfig();
+            
+        } catch (e) {
+            console.error("Start recording failed:", e);
+            alert("无法访问麦克风");
+        }
+    }
+};
 
 /**
  * 滚动到底部方法
@@ -100,13 +163,7 @@ const connectWebSocket = () => {
     }
 
     // 发送初始配置
-    socket.value.send(JSON.stringify({
-        type: "config",
-        data: {
-            input_mode: "text",
-            output_mode: "text_only"
-        }
-    }));
+    sendConfig();
   };
 
   socket.value.onmessage = async (event) => {
@@ -118,9 +175,23 @@ const connectWebSocket = () => {
       } catch (e) {
         console.error('Failed to parse websocket message:', e);
       }
-    } else {
-      // 处理二进制消息 (音频等)，暂时忽略
-      // console.log('Received binary data:', event.data);
+    } else if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
+      // 处理二进制消息 (音频)
+      try {
+          // 如果是 Blob (默认情况), 需要先转 ArrayBuffer
+          let arrayBuffer;
+          if (event.data instanceof Blob) {
+              arrayBuffer = await event.data.arrayBuffer();
+          } else {
+              arrayBuffer = event.data;
+          }
+          
+          if (arrayBuffer.byteLength > 0) {
+              audioManager.playPCM(arrayBuffer);
+          }
+      } catch (e) {
+          console.error('Error processing audio data:', e);
+      }
     }
   };
 
@@ -300,6 +371,17 @@ onUnmounted(() => {
         
         <!-- 右侧工具栏按钮 -->
         <div class="flex items-center gap-3">
+          <!-- 语音模式开关 -->
+          <button 
+            @click="toggleVoiceMode" 
+            class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors border flex items-center gap-2"
+            :class="isVoiceMode ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-gray-50 text-gray-500 border-gray-200'"
+            title="Toggle Voice Output"
+          >
+            <i class="fas" :class="isVoiceMode ? 'fa-volume-up' : 'fa-volume-mute'"></i>
+            <span class="hidden md:inline">{{ isVoiceMode ? 'Voice On' : 'Voice Off' }}</span>
+          </button>
+
           <button class="w-9 h-9 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 transition-colors">
             <i class="fas fa-search"></i>
           </button>
@@ -360,8 +442,14 @@ onUnmounted(() => {
                  <button class="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-colors" title="Upload Image">
                   <i class="fas fa-image"></i>
                 </button>
-                <button class="p-2 text-gray-400 hover:text-green-500 hover:bg-green-50 rounded-full transition-colors" title="Voice Input">
-                  <i class="fas fa-microphone"></i>
+                <button 
+                  @click="toggleRecording"
+                  class="p-2 rounded-full transition-colors relative"
+                  :class="isRecording ? 'text-red-500 bg-red-50' : 'text-gray-400 hover:text-green-500 hover:bg-green-50'"
+                  title="Voice Input"
+                >
+                  <i class="fas" :class="isRecording ? 'fa-stop' : 'fa-microphone'"></i>
+                  <span v-if="isRecording" class="absolute inset-0 rounded-full border border-red-400 opacity-75 animate-ping"></span>
                 </button>
                 <button class="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-full transition-colors" title="Attach File">
                   <i class="fas fa-paperclip"></i>
