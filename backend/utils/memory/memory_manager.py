@@ -155,6 +155,15 @@ class MemoryManager:
             if facts:
                 logger.info(f"Session 总结提取到 {len(facts)} 条事实")
                 for fact in facts:
+                    # [去重检查] 
+                    # 在添加前，先搜索是否有极高相似度的记录
+                    if self.vector_store.embedding_func:
+                        # 仅搜索最相似的一条
+                        duplicates = self.vector_store.search(fact, top_k=1, threshold=0.92, time_decay=False)
+                        if duplicates:
+                            logger.info(f"发现重复事实，跳过存储: {fact[:20]}... (相似度: {duplicates[0]['score']:.4f})")
+                            continue
+
                     self.vector_store.add(fact, metadata={"source": "session_summary", "type": "fact"})
             
             return summary.strip()
