@@ -410,6 +410,9 @@ class SessionManager:
         """
         if not text or not text.strip(): return
 
+        # 更新状态：思考中
+        await self._send_state_update("thinking")
+
         # 广播用户输入
         await event_bus.publish(EventType.CHAT_RECEIVED, {"content": text})
         self.last_user_input = text
@@ -462,6 +465,9 @@ class SessionManager:
         # 句子结束符正则 (中英文)
         sentence_endings = re.compile(r'[.!?;。！？；\n]+')
 
+        # 标记是否已开始说话
+        has_started_speaking = False
+
         try:
             while True:
                 token = await queue.get()
@@ -469,6 +475,11 @@ class SessionManager:
                 # 结束信号
                 if token is None:
                     break
+                
+                # 更新状态：说话中 (仅在收到第一个 token 时发送一次)
+                if not has_started_speaking:
+                    await self._send_state_update("speaking")
+                    has_started_speaking = True
 
                 full_response += token
 
@@ -564,6 +575,9 @@ class SessionManager:
                 "ai_content": full_text
             })
             self.last_user_input = None
+
+        # 更新状态：空闲
+        await self._send_state_update("idle")
 
         # 1. 触发 Agent 分析 (通过队列解耦)
         if self.current_llm:
@@ -780,6 +794,9 @@ class SessionManager:
         - 取消 LLM 的生成任务
         """
         print("User Interrupt!")
+        
+        # 更新状态：被打断
+        await self._send_state_update("interrupted")
 
         # 仅在需要音频输出时清空 TTS 队列
         if self.output_mode == OutputMode.TEXT_AND_AUDIO:
@@ -792,3 +809,6 @@ class SessionManager:
         # 取消 LLM 生成
         if self.current_llm:
             await self.current_llm.cancel()
+
+        # 恢复空闲状态
+        await self._send_state_update("idle")

@@ -64,6 +64,12 @@ const characterName = ref('AI Assistant')
 const isVoiceMode = ref(false) // 是否开启语音回复 (TTS)
 const isRecording = ref(false) // 是否正在录音
 
+// 交互控制
+const isInterrupted = ref(false) // 是否处于打断状态 (用于丢弃滞后的音频包)
+
+// 后端状态
+const backendState = ref('idle') // idle, thinking, speaking, interrupted
+
 // 快捷操作按钮配置 (暂未启用，预留功能)
 const quickActions = [
   { icon: 'fas fa-image', label: '图片', color: 'text-blue-500' },
@@ -143,6 +149,30 @@ const toggleRecording = async () => {
 };
 
 /**
+ * 停止交互 (打断)
+ */
+const stopInteraction = () => {
+    // 标记为打断状态，开始丢弃后续音频包
+    isInterrupted.value = true;
+
+    // 1. 停止前端音频播放
+    audioManager.stopPlayback();
+    
+    // 2. 发送打断信号给后端
+    if (socket.value && socket.value.readyState === WebSocket.OPEN) {
+        socket.value.send(JSON.stringify({
+            type: "interrupt"
+        }));
+    }
+    
+    // 3. 更新本地状态
+    isTyping.value = false;
+    isRecording.value = false; // 如果正在录音也停止
+    audioManager.stopRecording(); // 确保录音停止
+    console.log("[UI] Interaction stopped by user.");
+};
+
+/**
  * 滚动到底部方法
  * 使用 nextTick 确保在 DOM 更新后执行滚动操作
  */
@@ -187,6 +217,11 @@ const connectWebSocket = () => {
         console.error('Failed to parse websocket message:', e);
       }
     } else if (event.data instanceof ArrayBuffer || event.data instanceof Blob) {
+      // 检查是否处于打断状态，如果是，则丢弃所有音频数据
+      if (isInterrupted.value) {
+          return;
+      }
+      
       // 处理二进制消息 (音频)
       try {
           // 如果是 Blob (默认情况), 需要先转 ArrayBuffer
@@ -255,6 +290,12 @@ const handleSocketMessage = async (message) => {
     // 心跳回应
   } else if (message.type === 'state_change') {
       console.log('Backend state changed:', message.state);
+      backendState.value = message.state;
+      
+      // 如果状态变为 idle 或 interrupted，停止 typing 动画
+      if (message.state === 'idle' || message.state === 'interrupted') {
+          isTyping.value = false;
+      }
   }
 };
 
@@ -269,6 +310,9 @@ const sendMessage = async () => {
   }
 
   const content = userInput.value;
+
+  // 重置打断标志
+  isInterrupted.value = false;
 
   // 1. 添加用户消息
   messages.value.push({
@@ -375,6 +419,16 @@ onUnmounted(() => {
               <div class="flex items-center gap-2">
                 <span class="w-2 h-2 rounded-full" :class="isConnected ? 'bg-green-500' : 'bg-red-500'"></span>
                 <span class="text-xs text-gray-500">{{ isConnected ? 'Online' : 'Offline' }}</span>
+                <!-- 状态可视化标签 -->
+                <span v-if="backendState !== 'idle'" 
+                      class="ml-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full"
+                      :class="{
+                          'bg-yellow-100 text-yellow-700': backendState === 'thinking',
+                          'bg-green-100 text-green-700': backendState === 'speaking',
+                          'bg-red-100 text-red-700': backendState === 'interrupted'
+                      }">
+                    {{ backendState }}
+                </span>
               </div>
             </div>
           </div>
@@ -467,15 +521,28 @@ onUnmounted(() => {
                 </button>
               </div>
               
-              <!-- 发送按钮 -->
-              <button 
-                @click="sendMessage"
-                :disabled="!userInput.trim() || !isConnected"
-                :class="{'opacity-50 cursor-not-allowed': !userInput.trim() || !isConnected, 'hover:bg-blue-600 hover:shadow-lg': userInput.trim() && isConnected}"
-                class="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 shadow-md"
-              >
-                <i class="fas fa-paper-plane text-sm"></i>
-              </button>
+              <!-- 发送按钮与停止按钮 -->
+              <div class="flex items-center gap-2">
+                <!-- 停止按钮 (仅在非空闲状态下显示) -->
+                <button 
+                  v-if="backendState === 'speaking' || backendState === 'thinking' || isTyping"
+                  @click="stopInteraction"
+                  class="w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 shadow-md bg-red-50 text-red-500 hover:bg-red-500 hover:text-white border border-red-200 animate-pulse"
+                  title="Stop / Interrupt"
+                >
+                  <i class="fas fa-stop text-sm"></i>
+                </button>
+
+                <!-- 发送按钮 -->
+                <button 
+                  @click="sendMessage"
+                  :disabled="!userInput.trim() || !isConnected"
+                  :class="{'opacity-50 cursor-not-allowed': !userInput.trim() || !isConnected, 'hover:bg-blue-600 hover:shadow-lg': userInput.trim() && isConnected}"
+                  class="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 shadow-md"
+                >
+                  <i class="fas fa-paper-plane text-sm"></i>
+                </button>
+              </div>
             </div>
           </div>
           

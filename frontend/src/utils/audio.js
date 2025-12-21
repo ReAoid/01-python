@@ -229,6 +229,13 @@ export class AudioManager {
         }
         this.isPlaying = false;
         this.audioQueue = [];
+        this.resampleLeftover = null;
+        this.byteLeftover = null;
+
+        // [双重保险] 挂起 AudioContext 可以立即停止硬件缓冲区的剩余声音
+        if (this.audioContext && this.audioContext.state === 'running') {
+            this.audioContext.suspend();
+        }
     }
 
     // --- 录音部分 ---
