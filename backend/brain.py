@@ -15,6 +15,7 @@ from backend.config import settings
 from backend.services.asr_service import ASRService
 from backend.services.tts_service import TTSService
 from backend.services.text_llm_client import TextLLMClient
+from backend.core.event_bus import event_bus, Event, EventType
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,30 @@ class SessionManager:
 
         # --- 任务管理 ---
         self.consumer_task: Optional[asyncio.Task] = None
+        self.last_user_input: Optional[str] = None  # 记录最后的用户输入用于事件广播
+        
+        # 订阅系统通知
+        event_bus.subscribe(EventType.TASK_COMPLETED, self._on_task_completed)
+        event_bus.subscribe(EventType.MEMORY_UPDATED, self._on_memory_updated)
+
+    async def _on_task_completed(self, event: Event):
+        """处理任务完成通知。"""
+        if not self.websocket: return
+        
+        result = event.data.get("result")
+        if result:
+            # 作为特殊系统消息或纯文本发送
+            await self._send_text_to_frontend(f"【系统任务完成】 {result}")
+
+    async def _on_memory_updated(self, event: Event):
+        """处理自我意识更新。"""
+        if not self.websocket: return
+        
+        content = event.data.get("content")
+        source = event.data.get("source")
+        
+        if source == "self_awareness" and content:
+            await self._send_text_to_frontend(f"【AI 自我思考】 {content}")
 
     # =========================================================================
     # 1. 生命周期与管道启动
@@ -379,6 +404,10 @@ class SessionManager:
         """
         if not text or not text.strip(): return
 
+        # 广播用户输入
+        await event_bus.publish(EventType.CHAT_RECEIVED, {"content": text})
+        self.last_user_input = text
+
         # 增加对话条数计数
         self.conversation_count += 1
 
@@ -506,6 +535,14 @@ class SessionManager:
         # 仅在需要音频输出时 flush TTS
         if self.output_mode == OutputMode.TEXT_AND_AUDIO:
             await self.tts.flush()
+
+        # 广播对话完成事件 (用户 + AI)
+        if self.last_user_input:
+            await event_bus.publish(EventType.CHAT_COMPLETED, {
+                "user_content": self.last_user_input,
+                "ai_content": full_text
+            })
+            self.last_user_input = None
 
         # 1. 触发 Agent 分析 (通过队列解耦)
         if self.current_llm:

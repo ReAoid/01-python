@@ -85,6 +85,41 @@ class OpenaiLlm(Llm):
             logger.error(f"调用LLM API时发生错误: {e}")
             raise
 
+    async def agenerate(self, messages: List[Message], **kwargs) -> Message:
+        """
+        异步非流式生成响应。
+        
+        Args:
+            messages: 消息列表
+            **kwargs: 其他参数(如 temperature, max_tokens 等)
+            
+        Returns:
+            Message: 完整的响应消息
+        """
+        default_temp = settings.llm.temperature
+        temperature = kwargs.get("temperature", default_temp)
+
+        logger.info(f"正在异步调用 {self.model} 模型(非流式)...")
+
+        try:
+            api_messages = self._convert_messages(messages)
+            response = await self.async_client.chat.completions.create(
+                model=self.model,
+                messages=api_messages,
+                temperature=temperature,
+                stream=False,
+                **{k: v for k, v in kwargs.items() if k not in ["temperature"]}
+            )
+
+            content = response.choices[0].message.content
+            logger.success(f"大语言模型异步响应成功,生成了 {len(content)} 个字符")
+
+            return Message(role="assistant", content=content)
+
+        except Exception as e:
+            logger.error(f"调用LLM API时发生错误: {e}")
+            raise
+
     def stream(self, messages: List[Message], **kwargs) -> Generator[str, None, None]:
         """
         流式生成响应。

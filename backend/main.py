@@ -13,6 +13,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings
+from backend.core.event_bus import event_bus, EventType
+from backend.services.memory_service import MemoryService
+from backend.services.task_service import TaskService
+from backend.services.self_awareness_service import SelfAwarenessService
 
 # 配置日志
 logging.basicConfig(
@@ -43,6 +47,23 @@ frontend_path = project_root / "frontend"
 # ============================================================================
 # 路由定义
 # ============================================================================
+
+@app.on_event("startup")
+async def startup_event():
+    """启动后台服务。"""
+    logger.info("正在初始化后台服务...")
+    try:
+        # 初始化服务 (它们会自动订阅事件总线)
+        # 存储在 app.state 中以保持引用存活
+        app.state.memory_service = MemoryService()
+        app.state.task_service = TaskService()
+        app.state.self_awareness_service = SelfAwarenessService()
+        
+        # 通知系统启动
+        await event_bus.publish(EventType.SYSTEM_STARTUP, {})
+        logger.info("后台服务已初始化。")
+    except Exception as e:
+        logger.error(f"启动后台服务失败: {e}")
 
 @app.get("/")
 async def root():
