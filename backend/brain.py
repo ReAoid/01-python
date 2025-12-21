@@ -489,6 +489,7 @@ class SessionManager:
 
                             # 发送完整句子给 TTS
                             if sentence.strip():
+                                logger.info(f"Sending sentence to TTS: {sentence[:20]}...")
                                 await self.tts.push_text(sentence)
 
                             buffer = remaining
@@ -502,6 +503,7 @@ class SessionManager:
             # 循环结束 (None)
             # 处理 buffer 中剩余的内容 (仅在需要音频输出时)
             if self.output_mode == OutputMode.TEXT_AND_AUDIO and buffer.strip():
+                logger.info(f"Sending remaining buffer to TTS: {buffer[:20]}...")
                 await self.tts.push_text(buffer)
 
             # 触发完成处理
@@ -599,6 +601,7 @@ class SessionManager:
         if self.websocket:
             try:
                 # 结构设计：直接发送二进制 PCM 数据
+                # logger.debug(f"Sending audio chunk to frontend: {len(audio_data)} bytes")
                 await self.websocket.send_bytes(audio_data)
             except Exception as e:
                 logger.error(f"Failed to send audio to frontend: {e}")

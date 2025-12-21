@@ -5,11 +5,24 @@
 export class AudioManager {
     constructor() {
         this.audioContext = null;
-        this.nextStartTime = 0;
         this.isRecording = false;
+        
+        // 录音相关
         this.mediaStream = null;
-        this.processor = null;
+        this.recorderProcessor = null;
         this.inputSource = null;
+
+        // 播放相关
+        this.playerProcessor = null;
+        this.audioQueue = []; // 存放 Float32 的 PCM 数据块
+        this.isPlaying = false;
+        this.inputSampleRate = 32000; // 后端发来的采样率
+        
+        // 重采样状态
+        this.resampleLeftover = null;
+        
+        // 字节流重组缓冲区 (处理 misaligned data)
+        this.byteLeftover = null;
     }
 
     _initAudioContext() {
@@ -22,46 +35,200 @@ export class AudioManager {
     }
 
     // --- 播放部分 ---
-
+    
     /**
      * 播放 PCM 数据片段
-     * @param {ArrayBuffer} data - 16-bit PCM, 16000Hz, Mono
+     * 改用 ScriptProcessorNode 实现流式播放，消除拼接噪声
+     * @param {ArrayBuffer} data - 16-bit PCM, 32000Hz, Mono
      */
     async playPCM(data) {
         this._initAudioContext();
         
-        // 如果 Context 处于挂起状态（由于自动播放策略），则恢复它
+        // 恢复 Context
         if (this.audioContext.state === 'suspended') {
             await this.audioContext.resume();
         }
 
-        // 16-bit PCM 转 Float32
-        const int16Array = new Int16Array(data);
-        const float32Array = new Float32Array(int16Array.length);
+        // 1. 获取 ArrayBuffer
+        let chunk = data;
+        if (data.buffer) {
+             chunk = data.buffer;
+        }
+
+        // 2. 字节流重组逻辑
+        // 如果有上次剩下的字节，先拼接到当前块前面
+        if (this.byteLeftover) {
+            const newChunk = new Uint8Array(this.byteLeftover.byteLength + chunk.byteLength);
+            newChunk.set(new Uint8Array(this.byteLeftover));
+            newChunk.set(new Uint8Array(chunk), this.byteLeftover.byteLength);
+            chunk = newChunk.buffer;
+            this.byteLeftover = null;
+        }
+
+        // 检查是否对齐 (字节数必须是 2 的倍数)
+        if (chunk.byteLength % 2 !== 0) {
+            // 切分：前面的偶数部分拿去播放，剩下的 1 字节留到下次
+            const validLength = chunk.byteLength - 1;
+            this.byteLeftover = chunk.slice(validLength); // 保存最后 1 字节
+            chunk = chunk.slice(0, validLength); // 只保留偶数长度部分
+        }
         
+        // 如果 chunk 为空 (比如只发来了 1 个字节)，直接返回等待下一次
+        if (chunk.byteLength === 0) return;
+
+        // 3. 解析 PCM 数据 (Int16 -> Float32)
+        const int16Array = new Int16Array(chunk);
+        const float32Array = new Float32Array(int16Array.length);
         for (let i = 0; i < int16Array.length; i++) {
             float32Array[i] = int16Array[i] / 32768.0;
         }
 
-        // 创建 AudioBuffer (单声道，采样率 16000)
-        const buffer = this.audioContext.createBuffer(1, float32Array.length, 16000);
-        buffer.getChannelData(0).set(float32Array);
+        // 4. 将数据推入队列
+        this.audioQueue.push(float32Array);
 
-        // 创建 Source
-        const source = this.audioContext.createBufferSource();
-        source.buffer = buffer;
-        source.connect(this.audioContext.destination);
-
-        // 调度播放时间，实现无缝衔接
-        const currentTime = this.audioContext.currentTime;
-        if (this.nextStartTime < currentTime) {
-            this.nextStartTime = currentTime;
+        // 5. 如果播放器未启动，则启动
+        if (!this.isPlaying) {
+            console.log("[AudioManager] Starting playback stream...");
+            this._startStreamingPlayback();
         }
+    }
+
+    _startStreamingPlayback() {
+        if (this.isPlaying) return;
+        this.isPlaying = true;
+
+        if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume().then(() => {
+                console.log("[AudioManager] AudioContext resumed successfully");
+            });
+        }
+
+        // 创建 ScriptProcessorNode
+        // bufferSize: 4096 (延迟约 90ms @ 44.1k), input: 0, output: 1
+        this.playerProcessor = this.audioContext.createScriptProcessor(4096, 0, 1);
         
-        source.start(this.nextStartTime);
-        
-        // 更新下一次播放的开始时间
-        this.nextStartTime += buffer.duration;
+        let debugCounter = 0; // 限制日志频率
+
+        this.playerProcessor.onaudioprocess = (e) => {
+            const outputData = e.outputBuffer.getChannelData(0);
+            const outputLength = outputData.length;
+            
+            // 调试：每 100 次回调 (约 8-9秒) 打印一次状态，或者在刚开始时打印
+            debugCounter++;
+            if (debugCounter === 1 || debugCounter % 100 === 0) {
+                 console.log(`[AudioDebug] ctx.state=${this.audioContext.state}, ctx.rate=${this.audioContext.sampleRate}, queueLen=${this.audioQueue.length}, leftover=${this.resampleLeftover ? this.resampleLeftover.length : 0}`);
+            }
+
+            // [关键] 如果 queue 为空且没有 leftover，直接填充静音并返回
+            // 避免下面的逻辑在没有数据时产生错误的静音处理或死循环
+            if ((!this.resampleLeftover || this.resampleLeftover.length === 0) && this.audioQueue.length === 0) {
+                for (let i = 0; i < outputLength; i++) {
+                    outputData[i] = 0;
+                }
+                if (debugCounter % 50 === 0) {
+                     console.debug("[AudioManager] Buffer underrun (Empty)");
+                }
+                return;
+            }
+
+            // 目标: 填满 outputData
+            let outputIndex = 0;
+            let hasData = false;
+            
+            // 安全守卫
+            let loopGuard = 0;
+            
+            while (outputIndex < outputLength) {
+                loopGuard++;
+                if (loopGuard > 5000) { 
+                    console.error("[AudioManager] Infinite loop detected in playback processor!");
+                    break;
+                }
+
+                // 1. 如果没有剩余数据，尝试从队列获取
+                if (!this.resampleLeftover || this.resampleLeftover.length === 0) {
+                    if (this.audioQueue.length > 0) {
+                        this.resampleLeftover = this.audioQueue.shift();
+                    } else {
+                        // 队列空了：填充静音并退出
+                        for (let i = outputIndex; i < outputLength; i++) {
+                            outputData[i] = 0;
+                        }
+                        return;
+                    }
+                }
+
+                const ratio = this.inputSampleRate / this.audioContext.sampleRate;
+                
+                // 2. 计算当前 leftover 能提供的输出点数
+                const inputAvailable = this.resampleLeftover.length;
+                // 计算当前可生成的输出点数（不减 1，允许用到最后一个点）
+                // 线性插值通常需要 i 和 i+1，但在数据流的末尾，我们可能需要特殊处理
+                // 为了简化且防止死循环，我们使用 Math.floor(inputAvailable / ratio)
+                // 这可能导致最后一个采样点被丢弃或产生微小的不连续，但比死循环好
+                let outputCanGenerate = Math.floor(inputAvailable / ratio);
+                
+                // 3. 边界情况：如果 leftover 数据太少，不够生成哪怕 1 个点
+                if (outputCanGenerate <= 0) {
+                    if (this.audioQueue.length > 0) {
+                        // 拼接到下一个块
+                        const nextChunk = this.audioQueue.shift();
+                        const newChunk = new Float32Array(this.resampleLeftover.length + nextChunk.length);
+                        newChunk.set(this.resampleLeftover);
+                        newChunk.set(nextChunk, this.resampleLeftover.length);
+                        this.resampleLeftover = newChunk;
+                        continue;
+                    } else {
+                        // 没数据了，直接退出（剩余的 output 填静音）
+                        for (let i = outputIndex; i < outputLength; i++) {
+                            outputData[i] = 0;
+                        }
+                        this.resampleLeftover = null;
+                        return; 
+                    }
+                }
+                
+                // 4. 本次循环要处理的输出点数
+                const processCount = Math.min(outputLength - outputIndex, outputCanGenerate);
+                
+                // 5. 执行线性插值
+                for (let i = 0; i < processCount; i++) {
+                    const inputIdx = i * ratio;
+                    const idxFloor = Math.floor(inputIdx);
+                    // 安全检查：防止 idxCeil 越界
+                    const idxCeil = Math.min(idxFloor + 1, this.resampleLeftover.length - 1);
+                    const alpha = inputIdx - idxFloor;
+                    
+                    const val = this.resampleLeftover[idxFloor] * (1 - alpha) + 
+                                this.resampleLeftover[idxCeil] * alpha;
+                    
+                    outputData[outputIndex + i] = val;
+                    if (Math.abs(val) > 0.0001) hasData = true;
+                }
+                
+                // [关键] 必须增加 outputIndex
+                outputIndex += processCount;
+                
+                // 6. 消耗输入数据
+                const inputConsumed = Math.floor(processCount * ratio);
+                if (inputConsumed >= this.resampleLeftover.length) {
+                    this.resampleLeftover = null;
+                } else {
+                    this.resampleLeftover = this.resampleLeftover.subarray(inputConsumed);
+                }
+            }
+        };
+
+        this.playerProcessor.connect(this.audioContext.destination);
+    }
+    
+    stopPlayback() {
+        if (this.playerProcessor) {
+            this.playerProcessor.disconnect();
+            this.playerProcessor = null;
+        }
+        this.isPlaying = false;
+        this.audioQueue = [];
     }
 
     // --- 录音部分 ---
@@ -188,4 +355,3 @@ export class AudioManager {
         return buffer;
     }
 }
-

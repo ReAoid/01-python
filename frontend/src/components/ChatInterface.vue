@@ -81,12 +81,22 @@ const quickActions = [
 const sendConfig = () => {
     if (!socket.value || socket.value.readyState !== WebSocket.OPEN) return;
     
+    const configData = {
+        input_mode: isRecording.value ? "audio" : "text",
+        output_mode: isVoiceMode.value ? "text_audio" : "text_only"
+    };
+
+    console.log("[Config] Sending config update:", configData);
+    console.log("[Config] Current Environment:", {
+        userAgent: navigator.userAgent,
+        audioContextState: audioManager.audioContext ? audioManager.audioContext.state : 'uninitialized',
+        isSecureContext: window.isSecureContext,
+        protocol: window.location.protocol
+    });
+
     socket.value.send(JSON.stringify({
         type: "config",
-        data: {
-            input_mode: isRecording.value ? "audio" : "text",
-            output_mode: isVoiceMode.value ? "text_audio" : "text_only"
-        }
+        data: configData
     }));
 };
 
@@ -95,6 +105,7 @@ const sendConfig = () => {
  */
 const toggleVoiceMode = () => {
     isVoiceMode.value = !isVoiceMode.value;
+    console.log("[UI] User toggled Voice Mode. New state:", isVoiceMode.value ? "ON" : "OFF");
     sendConfig();
 };
 
