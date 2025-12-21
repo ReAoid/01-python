@@ -151,3 +151,14 @@ class TextLLMClient:
         for msg in history_dicts:
             if msg.get('role') != 'system':  # 避免重复 System
                 self.history.append(Message(role=msg['role'], content=msg['content']))
+
+    def set_previous_summary(self, summary: str):
+        """注入上一轮会话的总结作为 Context"""
+        if not summary:
+            return
+            
+        context_msg = f"\n\n[Context from previous session]:\n{summary}\n"
+        
+        # 追加到 System Prompt 后面
+        self.system_message.content += context_msg
+        logger.info("Previous session summary injected into System Prompt.")

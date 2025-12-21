@@ -16,6 +16,8 @@ from backend.services.asr_service import ASRService
 from backend.services.tts_service import TTSService
 from backend.services.text_llm_client import TextLLMClient
 from backend.core.event_bus import event_bus, Event, EventType
+from backend.utils.memory.memory_manager import MemoryManager
+from backend.utils.openai_llm import OpenaiLlm
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +79,10 @@ class SessionManager:
         self.asr = ASRService(asr_config)
         # TTSService 使用 settings 对象
         self.tts = TTSService(self.config)
+
+        # --- 记忆管理 ---
+        self.llm_memory_service = OpenaiLlm()
+        self.memory_manager = MemoryManager(llm=self.llm_memory_service)
 
         # --- 双 Session 架构 (实现热切换) ---
         self.current_llm: Optional[TextLLMClient] = None  # 当前服务中的 LLM
@@ -652,10 +658,23 @@ class SessionManager:
         self.incremental_cache = []  # 清空增量缓存
 
         try:
-            # 1. 创建新 Session (此时会自动拉取最新的 Memory)
+            # 1. 如果有旧会话，先进行总结 (Summarize & Extract)
+            summary_text = ""
+            if self.current_llm:
+                old_history = self.current_llm.get_history()
+                if old_history:
+                    logger.info("Summarizing previous session for context injection...")
+                    # 异步生成总结并提取事实
+                    summary_text = await self.memory_manager.summarize_session(old_history)
+
+            # 2. 创建新 Session (此时会自动拉取最新的 Memory)
             self.pending_llm = await self._create_llm_session(is_renew=True)
 
-            # 2. 预热 (Warmup) - 用于预热新的会话，加快第一次响应速度，可选
+            # 3. 注入上一轮的总结作为 Context
+            if summary_text:
+                self.pending_llm.set_previous_summary(summary_text)
+
+            # 4. 预热 (Warmup) - 用于预热新的会话，加快第一次响应速度，可选
             # await self.pending_llm.warmup()
 
             print("Shadow session ready. Caching incremental chats...")
@@ -663,6 +682,7 @@ class SessionManager:
 
         except Exception as e:
             print(f"Renew failed: {e}")
+            logger.error(f"Renew failed details: {e}", exc_info=True)
             self.is_preparing_renew = False
             self.pending_llm = None
 

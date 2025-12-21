@@ -1,8 +1,12 @@
 import json
 import os
 import numpy as np
+import time
+import asyncio
+import shutil
 from typing import List, Dict, Any, Callable, Optional
 from loguru import logger
+from concurrent.futures import ThreadPoolExecutor
 
 from backend.config import migration
 
@@ -10,11 +14,11 @@ class VectorStore:
     """
     轻量级向量存储实现。
     使用 JSON 文件存储文本和元数据，使用 numpy 计算余弦相似度。
-
-    TODO: [性能优化]
-    1. 后端替换：支持更强大的向量数据库后端 (如 ChromaDB, FAISS, Qdrant) 以提高大规模数据的检索性能和持久化能力。
-    2. 异步支持：实现异步 I/O 操作 (save/load) 以及异步检索，避免阻塞主线程。
-    3. 索引优化：对于大规模数据，添加索引机制 (如 HNSW) 以加速检索。
+    
+    [优化功能]
+    - 原子写入 (Atomic Write)
+    - 异步保存 (Async Save)
+    - 自动时间戳
     """
 
     def __init__(self, file_path: str = None, embedding_func: Optional[Callable[[str], List[float]]] = None):
@@ -37,6 +41,9 @@ class VectorStore:
         self.embedding_func = embedding_func
         self.documents: List[Dict[str, Any]] = []
         self.embeddings: Optional[np.ndarray] = None
+        
+        # 线程池用于执行阻塞的 I/O 操作
+        self.executor = ThreadPoolExecutor(max_workers=1)
         
         self.load()
 
@@ -61,17 +68,35 @@ class VectorStore:
             logger.info("未找到记忆文件，将创建新的存储")
 
     def save(self):
-        """保存数据到文件"""
+        """同步保存数据到文件 (不推荐直接调用，尽量使用 save_async)"""
         try:
             data = {
                 "documents": self.documents,
                 "embeddings": self.embeddings.tolist() if self.embeddings is not None else []
             }
-            with open(self.file_path, 'w', encoding='utf-8') as f:
+            
+            # 原子写入策略：先写临时文件，再重命名
+            tmp_path = f"{self.file_path}.tmp"
+            with open(tmp_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            logger.info("记忆数据已保存")
+                
+            # 重命名覆盖 (原子操作)
+            shutil.move(tmp_path, self.file_path)
+            
+            logger.info("记忆数据已保存 (原子写入)")
         except Exception as e:
             logger.error(f"保存记忆文件失败: {e}")
+            # 尝试清理临时文件
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except:
+                    pass
+
+    async def save_async(self):
+        """异步保存数据到文件"""
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(self.executor, self.save)
 
     def add(self, text: str, metadata: Dict[str, Any] = None):
         """
@@ -87,9 +112,14 @@ class VectorStore:
         try:
             vector = self.embedding_func(text)
             
+            # 注入时间戳
+            meta = metadata or {}
+            if "timestamp" not in meta:
+                meta["timestamp"] = time.time()
+
             doc = {
                 "text": text,
-                "metadata": metadata or {},
+                "metadata": meta,
                 "id": len(self.documents)
             }
             
@@ -101,7 +131,16 @@ class VectorStore:
             else:
                 self.embeddings = np.vstack([self.embeddings, vector_np])
                 
-            self.save()
+            # 使用异步保存
+            # 注意: add 本身是同步方法，这里我们创建一个 Task 来执行异步保存，不阻塞当前流程
+            # 如果是在异步上下文中调用，最好将 add 也改为 async add
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self.save_async())
+            except RuntimeError:
+                # 如果没有运行中的循环 (例如脚本模式)，回退到同步保存
+                self.save()
+            
             logger.info(f"已添加记忆: {text[:20]}...")
             
         except Exception as e:

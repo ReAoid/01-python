@@ -87,6 +87,82 @@ class MemoryManager:
         if self.vector_store.embedding_func:
             self.vector_store.add(interaction_text, metadata=metadata)
 
+    async def summarize_session(self, history: List[Message]) -> str:
+        """
+        [Session 切换时调用]
+        总结上一段会话的历史，并提取关键事实存入长期记忆。
+        
+        Args:
+            history: 上一段会话的完整消息记录
+            
+        Returns:
+            str: 生成的会话总结 (用于注入新会话的 Context)
+        """
+        if not history:
+            return ""
+
+        # 构造 Prompt
+        history_text = "\n".join([f"{msg.role}: {msg.content}" for msg in history if msg.role != "system"])
+        
+        prompt = f"""
+        Analyze the following conversation history.
+        Task 1: Summarize the conversation briefly (what was discussed, context, tone).
+        Task 2: Extract any KEY facts about the user or important constraints (e.g., user's name, preferences, specific requests).
+        
+        Conversation:
+        {history_text}
+        
+        Output Format:
+        SUMMARY: <one paragraph summary>
+        FACTS:
+        - <fact 1>
+        - <fact 2>
+        (If no facts, just write "None")
+        """
+        
+        try:
+            messages = [
+                Message(role="system", content="You are a helpful memory assistant."),
+                Message(role="user", content=prompt)
+            ]
+            
+            # 调用 LLM
+            response = await self.llm.agenerate(messages)
+            content = response.content.strip()
+            
+            # 解析结果
+            summary = ""
+            facts = []
+            
+            lines = content.split('\n')
+            current_section = None
+            
+            for line in lines:
+                line = line.strip()
+                if line.startswith("SUMMARY:"):
+                    current_section = "SUMMARY"
+                    summary += line.replace("SUMMARY:", "").strip()
+                elif line.startswith("FACTS:"):
+                    current_section = "FACTS"
+                elif current_section == "SUMMARY":
+                    summary += " " + line
+                elif current_section == "FACTS" and line.startswith("-"):
+                    fact = line[1:].strip()
+                    if fact:
+                        facts.append(fact)
+                        
+            # 存储事实到长期记忆
+            if facts:
+                logger.info(f"Session 总结提取到 {len(facts)} 条事实")
+                for fact in facts:
+                    self.vector_store.add(fact, metadata={"source": "session_summary", "type": "fact"})
+            
+            return summary.strip()
+            
+        except Exception as e:
+            logger.error(f"Session 总结失败: {e}")
+            return ""
+
     def get_context(self, query: str, top_k: int = 3) -> Tuple[List[Message], str]:
         """
         获取构建 Prompt 所需的上下文。
