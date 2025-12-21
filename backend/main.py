@@ -56,8 +56,8 @@ async def startup_event():
         # 初始化服务 (它们会自动订阅事件总线)
         # 存储在 app.state 中以保持引用存活
         app.state.memory_service = MemoryService()
-        app.state.task_service = TaskService()
-        app.state.self_awareness_service = SelfAwarenessService()
+        # app.state.task_service = TaskService() # todo 暂时关闭
+        # app.state.self_awareness_service = SelfAwarenessService() # todo 暂时关闭
         
         # 通知系统启动
         await event_bus.publish(EventType.SYSTEM_STARTUP, {})
