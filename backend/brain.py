@@ -424,6 +424,12 @@ class SessionManager:
         # 发送给当前 LLM
         if self.current_llm:
             try:
+                # [RAG 集成] 在发送前，先检索长期记忆
+                _, rag_context = self.memory_manager.get_context(text)
+                if rag_context:
+                    # 注入临时上下文到 LLM 的历史中
+                    self.current_llm.add_temporary_context(rag_context)
+
                 # 获取 LLM 输出队列
                 queue = await self.current_llm.send_user_message(text)
 

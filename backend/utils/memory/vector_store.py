@@ -146,18 +146,20 @@ class VectorStore:
         except Exception as e:
             logger.error(f"添加记忆失败: {e}")
 
-    def search(self, query: str, top_k: int = 3, threshold: float = 0.7) -> List[Dict[str, Any]]:
+    def search(self, query: str, top_k: int = 3, threshold: float = 0.7, time_decay: bool = True) -> List[Dict[str, Any]]:
         """
         搜索相似文本。
 
-        TODO: [功能增强]
-        1. 元数据过滤：添加 metadata filtering 功能，允许按时间、来源等条件过滤记忆。
-        2. 混合检索：支持关键词 (BM25) + 向量的混合检索模式，提高对专有名词的命中率。
+        功能:
+        1. 向量相似度检索 (Semantic Search)
+        2. 时间衰减 (Time Decay): 较新的记忆得分更高
+        3. 关键词加权 (Keyword Boosting): 包含查询词的记忆得分更高
 
         Args:
             query: 查询文本
             top_k: 返回结果数量
             threshold: 相似度阈值
+            time_decay: 是否启用时间衰减
 
         Returns:
             相似文档列表
@@ -171,29 +173,54 @@ class VectorStore:
         try:
             query_vector = np.array(self.embedding_func(query), dtype=np.float32)
             
-            # 计算余弦相似度
-            # norm_docs = np.linalg.norm(self.embeddings, axis=1)
-            # norm_query = np.linalg.norm(query_vector)
-            # similarities = np.dot(self.embeddings, query_vector) / (norm_docs * norm_query)
-            
-            # 假设 embedding_func 返回的向量已经是归一化的（OpenAI embeddings 通常是归一化的）
-            # 如果不是，需要先归一化。这里为了保险起见，手动计算
+            # 1. 计算基础向量相似度
             norm_docs = np.linalg.norm(self.embeddings, axis=1)
             norm_query = np.linalg.norm(query_vector)
             
-            # 避免除以零
             if norm_query == 0:
                 return []
             norm_docs[norm_docs == 0] = 1e-10
             
             similarities = np.dot(self.embeddings, query_vector) / (norm_docs * norm_query)
             
-            # 获取 top_k 索引
-            top_indices = np.argsort(similarities)[::-1][:top_k]
+            # 2. 应用加权逻辑
+            current_time = time.time()
+            query_tokens = set(query.lower().split()) # 简单分词用于关键词匹配
+
+            final_scores = []
+            for idx, base_score in enumerate(similarities):
+                score = base_score
+                doc = self.documents[idx]
+                
+                # A. 关键词加权 (Keyword Boosting)
+                # 简单的逻辑：如果 query 中的词在 doc 文本中出现，微量加分
+                # 这有助于捞回那些向量相似度不高但包含精准关键词的条目
+                text_lower = doc['text'].lower()
+                matches = sum(1 for token in query_tokens if token in text_lower)
+                if matches > 0:
+                    score += matches * 0.05  # 每个匹配词 +0.05 分
+                
+                # B. 时间衰减 (Time Decay)
+                if time_decay:
+                    timestamp = doc.get("metadata", {}).get("timestamp", 0)
+                    if timestamp > 0:
+                        # 计算天数差
+                        days_diff = (current_time - timestamp) / (86400.0)
+                        # 衰减公式: score * (1 / (1 + decay_rate * days_diff))
+                        # decay_rate = 0.01 意味着 100 天前的记忆权重减半
+                        decay_factor = 1.0 / (1.0 + 0.01 * days_diff)
+                        score *= decay_factor
+                
+                final_scores.append(score)
+            
+            final_scores = np.array(final_scores)
+
+            # 3. 排序并取 Top-K
+            top_indices = np.argsort(final_scores)[::-1][:top_k]
             
             results = []
             for idx in top_indices:
-                score = float(similarities[idx])
+                score = float(final_scores[idx])
                 if score >= threshold:
                     doc = self.documents[idx].copy()
                     doc["score"] = score

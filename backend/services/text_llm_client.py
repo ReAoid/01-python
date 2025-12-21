@@ -34,6 +34,9 @@ class TextLLMClient:
         # 5. 初始化人设
         self._init_system_prompt(system_prompt)
 
+        # 6. 临时 RAG 上下文 (发完即焚)
+        self.temp_rag_context: Optional[str] = None
+
     def _init_system_prompt(self, system_prompt: Optional[str]):
         """初始化 System Prompt"""
         system_content = system_prompt
@@ -113,9 +116,22 @@ class TextLLMClient:
         """后台生成任务 (生产者)"""
         full_response = ""
         try:
+            # 构造发送给 LLM 的消息列表 (不修改 self.history)
+            messages_to_send = [self.system_message] + self.history
+
+            # 如果有临时 RAG 上下文，注入到消息列表末尾 (在 User 消息之前或之后均可，通常 User 之后 System 之前效果较好)
+            # 这里策略：插入在 System Prompt 之后，或者作为临时的 System Message 插入到最后
+            if self.temp_rag_context:
+                rag_msg = Message(
+                    role="system", 
+                    content=f"[Relevant Memory]\n{self.temp_rag_context}\n(Use this information to answer the user's question if relevant.)"
+                )
+                # 插入到倒数第二的位置 (即 User 消息之前) 或者直接 append 到最后
+                # 直接 append 到最后通常效果最强，因为离生成最近
+                messages_to_send.append(rag_msg)
+                
             # 调用 OpenaiLlm 的异步流式接口
-            messages = [self.system_message] + self.history
-            async for chunk in self.llm.astream(messages):
+            async for chunk in self.llm.astream(messages_to_send):
                 # 1. 放入队列供消费者使用
                 await self.output_queue.put(chunk)
 
@@ -124,8 +140,11 @@ class TextLLMClient:
             # 生成结束，添加 Sentinel (None) 表示结束
             await self.output_queue.put(None)
 
-            # 更新历史
+            # 更新历史 (只存真实的 Assistant 回复)
             self.history.append(Message(role="assistant", content=full_response))
+            
+            # [关键] 清除临时上下文
+            self.temp_rag_context = None
 
         except asyncio.CancelledError:
             logger.warning("Generation task was cancelled.")
@@ -162,3 +181,15 @@ class TextLLMClient:
         # 追加到 System Prompt 后面
         self.system_message.content += context_msg
         logger.info("Previous session summary injected into System Prompt.")
+
+    def add_temporary_context(self, context: str):
+        """
+        设置临时 RAG 上下文。
+        该上下文仅在下一次生成请求中有效，生成结束后立即清除，
+        不会污染 self.history。
+        """
+        if not context:
+            return
+            
+        self.temp_rag_context = context
+        logger.debug("Temporary RAG context set (will be used in next generation only).")
