@@ -14,24 +14,82 @@ pip install -r requirements.txt
 ```
 
 ## 系统环境变量
-请确保设置以下环境变量，或者配置 `core_config.json` 文件：
-```bash
-# 大模型
-## 聊天大模型
-export LLM__DEFAULT_MODEL="模型名称"
-export API__LLM_API_KEY="模型 apikey"
-export API__LLM_BASE_URL="模型请求地址"
-
-# MCP 工具
-## SERPAPI搜索工具
-export API__SERPAPI_API_KEY="serpapi 的调用 apikey"
+需要配置 `core_config.json` 文件到`backend/config/core_config.json`，结构为：
+```json
+{
+    "_comment": "核心配置文件 - 应用程序的主配置",
+    "llm": {
+        "default_model": "替换模型",
+        "default_provider": "openai",
+        "temperature": 0.7
+    },
+    "api": {
+        "llm_api_key": "替换key",
+        "llm_base_url": "替换请求地址",
+        "llm_timeout": 60,
+        "serpapi_api_key": "替换key"
+    },
+    "system": {
+        "debug": true,
+        "log_level": "INFO"
+    },
+    "memory": {
+        "max_history_length": 100,
+        "embedding_model": "替换使用模型"
+    },
+    "tts": {
+        "enabled": true,
+        "engine": "genie",
+        "genie_data_dir": "backend/config/tts",
+        "server": {
+            "host": "127.0.0.1",
+            "port": 8001,
+            "auto_start": false
+        },
+        "active_character": "feibi",
+        "language": "zh"
+    }
+}
 ```
 
-# 待执行计划
-- [x] 初始化项目
-- [x] 创建 core 文件夹
-- [x] 构建基础 mcp 框架
-- [x] 构建基础 memory 框架
-- [ ] 构建基础 chat 流程（Session 管理）
-- [ ] 构建基础 agent 框架
-- [ ] 热切换Session（文本模型根据轮数+Token来自动切换，语音和视频根据连接时间例如60s来自动切换）切换时会总结历史记录
+## 前端部署
+```shell
+cd frontend
+npm install
+```
+
+## TTS部署
+1.部署模型
+```text
+直接执行backend/utils/genie_client.py文件自动下载
+or
+将https://huggingface.co/High-Logic/Genie/tree/main/GenieData下的文件放到backend/config/tts/GenieData下
+```
+2.部署参考音频
+```text
+直接执行backend/utils/genie_client.py文件自动下载
+or
+将https://huggingface.co/High-Logic/Genie/tree/main/CharacterModels下的文件放到backend/config/tts/GenieData/CharacterModels下
+```
+## 启动顺序
+1.启动TTS服务（如果启用了TTS）
+```shell
+cd backend/utils
+python genie_server.py
+```
+2.启动后端服务
+```shell
+cd backend
+python main.py
+```
+3.启动前端服务    
+```shell
+cd frontend
+npm run dev
+```
+
+
+    
+
+
+
