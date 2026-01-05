@@ -1,213 +1,297 @@
+"""
+记忆管理器
+
+核心变更：
+1. 取消即时存储 - 不再每次对话后立即存储
+2. 会话级总结存储 - Session 结束时只保存总结
+3. 定期结构化处理 - 将总结转化为多层结构化存储
+
+数据流：
+原始对话 → 短期记忆（滑动窗口）
+         ↓ Session 结束
+        会话总结 → SessionSummaryStore
+                 ↓ 定期处理
+                结构化记忆项 → MemoryItemStore + MemoryGraph
+"""
 import os
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Callable
 from loguru import logger
+
 from backend.core.message import Message
 from backend.core.llm import Llm
 from backend.utils.openai_llm import OpenaiLlm
-from backend.utils.memory.short_term import ShortTermMemory
-from backend.utils.memory.vector_store import VectorStore
-from backend.config import settings
+from backend.config import settings, migration
+
+from .short_term import ShortTermMemory
+from .memory_item import MemoryItem, SessionSummary
+from .memory_store import SessionSummaryStore, MemoryItemStore
+from .memory_category import CategoryManager
+from .memory_graph import MemoryGraph
+from .memory_structurer import MemoryStructurer
+
 
 class MemoryManager:
     """
-    记忆管理器。
-    协调短期记忆（滑动窗口）和长期记忆（向量存储）。
-
-    TODO: [架构改进]
-    1. 反思机制 (Reflection)：定期回顾记忆并生成更高层级的见解 (Insights)，存回长期记忆。
-    2. 多租户支持：支持多用户/多会话隔离 (Session/User isolation)。
+    记忆管理器
+    
+    协调各个记忆模块，实现两阶段记忆处理：
+    
+    阶段1（实时）：
+    - 维护短期记忆（滑动窗口）
+    - Session 结束时生成总结并存储
+    
+    阶段2（后台）：
+    - 定期将总结结构化为记忆项
+    - 自动分类和建立关联
+    - 构建记忆图谱
+    
+    检索：
+    - 短期记忆：最近对话上下文
+    - 长期记忆：结构化记忆项检索
     """
-
-    def __init__(self, llm: Llm, vector_store_path: str = None):
+    
+    def __init__(self, llm: Llm, storage_dir: str = None):
         """
-        初始化记忆管理器。
-
+        初始化记忆管理器
+        
         Args:
-            llm: LLM 实例，用于生成 embedding 和摘要
-            vector_store_path: 向量存储文件路径
+            llm: LLM 实例，用于生成 embedding 和处理
+            storage_dir: 存储目录路径
         """
         self.llm = llm
-        self.short_term = ShortTermMemory()
         
-        # 从配置管理器读取 embedding 模型配置
+        # 存储目录
+        if storage_dir:
+            self.storage_dir = storage_dir
+        else:
+            self.storage_dir = migration.user_memory_dir
+        
+        # 确保目录存在
+        os.makedirs(self.storage_dir, exist_ok=True)
+        
+        # 从配置读取 embedding 模型
         self.embedding_model = settings.memory.embedding_model
         
-        # 定义 embedding 函数
-        def openai_embedding_func(text: str) -> List[float]:
-            # TODO: [接口抽象] 抽象 Embedding 接口，支持多种 Provider (如 HuggingFace, Cohere, Ollama 本地模型)。
-            if isinstance(llm, OpenaiLlm):
-                try:
-                    # 替换换行符以获得更好的 embedding
-                    text = text.replace("\n", " ")
-                    response = llm.client.embeddings.create(
-                        input=[text],
-                        model=self.embedding_model
-                    )
-                    return response.data[0].embedding
-                except Exception as e:
-                    logger.error(f"生成 Embedding 失败: {e}")
-                    return []
-            else:
-                # TODO: 支持其他 LLM 提供商
-                logger.warning("当前仅 OpenaiLlm 支持生成 Embedding，将跳过长期记忆功能")
-                return []
-
-        self.vector_store = VectorStore(
-            file_path=vector_store_path,
-            embedding_func=openai_embedding_func
+        # ============================================================
+        # 初始化各个记忆模块
+        # ============================================================
+        
+        # 1. 短期记忆（滑动窗口）- 用于对话上下文
+        self.short_term = ShortTermMemory(
+            max_messages=settings.memory.max_history_length * 2  # 用户+助手
         )
         
-        logger.info("MemoryManager 初始化完成")
-
+        # 2. 定义 embedding 函数
+        embedding_func = self._create_embedding_func()
+        
+        # 3. 会话总结存储（阶段1输出）
+        self.summary_store = SessionSummaryStore(storage_dir=self.storage_dir)
+        
+        # 4. 结构化记忆项存储（阶段2输出）
+        self.item_store = MemoryItemStore(
+            storage_dir=self.storage_dir,
+            embedding_func=embedding_func
+        )
+        
+        # 5. 分类管理器
+        self.category_manager = CategoryManager(storage_dir=self.storage_dir)
+        
+        # 6. 记忆图谱
+        self.memory_graph = MemoryGraph(storage_dir=self.storage_dir)
+        
+        # 7. 结构化处理器（核心）
+        self.structurer = MemoryStructurer(
+            llm=llm,
+            summary_store=self.summary_store,
+            item_store=self.item_store,
+            category_manager=self.category_manager,
+            memory_graph=self.memory_graph
+        )
+        
+        # 统计
+        self._session_count = 0
+        
+        logger.info(f"MemoryManager 初始化完成 (重构版)")
+        logger.info(f"  - 存储目录: {self.storage_dir}")
+        logger.info(f"  - 已有总结: {len(self.summary_store.summaries)}")
+        logger.info(f"  - 已有记忆项: {len(self.item_store.items)}")
+        logger.info(f"  - 分类数: {len(self.category_manager.categories)}")
+    
+    def _create_embedding_func(self) -> Optional[Callable[[str], List[float]]]:
+        """创建 embedding 函数"""
+        if not isinstance(self.llm, OpenaiLlm):
+            logger.warning("当前 LLM 不支持 embedding，长期记忆检索功能将受限")
+            return None
+        
+        def embedding_func(text: str) -> List[float]:
+            try:
+                text = text.replace("\n", " ")
+                response = self.llm.client.embeddings.create(
+                    input=[text],
+                    model=self.embedding_model
+                )
+                return response.data[0].embedding
+            except Exception as e:
+                logger.error(f"生成 embedding 失败: {e}")
+                return []
+        
+        return embedding_func
+    
+    # =========================================================================
+    # 对话交互接口
+    # =========================================================================
+    
     def add_interaction(self, user_input: str, ai_output: str, metadata: dict = None):
         """
-        添加一次交互记录。
-        会自动更新短期记忆，并异步（这里简化为同步）更新长期记忆。
-
+        添加一次交互记录
+        
+        重要变更：
+        - 只更新短期记忆
+        - 不再即时存储到向量数据库
+        - 长期记忆由 Session 总结时统一处理
+        
         Args:
             user_input: 用户输入
             ai_output: AI 回复
-            metadata: 元数据
-
-        TODO: [性能与策略]
-        1. 异步处理：将长期记忆的 embedding 生成和存储放入后台任务 (asyncio.create_task 或 Celery)，避免阻塞当前对话响应。
-        2. 智能筛选：引入 LLM 决策步骤 (Importance Filter)，判断当前的交互是否包含重要信息（如用户喜好、事实陈述），只有重要的信息才写入长期记忆，避免知识库被闲聊污染。
+            metadata: 元数据（保留接口兼容，但不再使用）
         """
-        # 1. 更新短期记忆
+        # 只更新短期记忆
         self.short_term.add("user", user_input)
         self.short_term.add("assistant", ai_output)
         
-        # 2. 更新长期记忆 (可选：可以只存储重要信息，或者由 LLM 决定是否存储)
-        # 这里为了简单，将用户输入和 AI 回复拼接存储，或者是分开存储
-        # 策略：将 (User, AI) 对作为一个记忆单元存储
-        interaction_text = f"User: {user_input}\nAssistant: {ai_output}"
-        
-        # 可以在这里加入 LLM 判断逻辑：这条交互值得记住吗？
-        # 目前直接存入
-        if self.vector_store.embedding_func:
-            self.vector_store.add(interaction_text, metadata=metadata)
-
-    async def summarize_session(self, history: List[Message]) -> str:
+        logger.debug(f"交互已添加到短期记忆 (不即时存储)")
+    
+    # =========================================================================
+    # 阶段1：会话总结
+    # =========================================================================
+    
+    async def summarize_session(
+        self, 
+        history: List[Message],
+        session_id: str = None
+    ) -> str:
         """
-        [Session 切换时调用]
-        总结上一段会话的历史，并提取关键事实存入长期记忆。
+        阶段1：Session 结束时生成总结
+        
+        这是存储长期记忆的唯一入口。
+        将完整对话压缩为高质量总结，存储到 SessionSummaryStore
         
         Args:
-            history: 上一段会话的完整消息记录
-            
+            history: 完整的对话历史
+            session_id: 会话 ID
+        
         Returns:
-            str: 生成的会话总结 (用于注入新会话的 Context)
+            总结文本（用于注入新会话的上下文）
         """
         if not history:
             return ""
-
-        # 构造 Prompt
-        history_text = "\n".join([f"{msg.role}: {msg.content}" for msg in history if msg.role != "system"])
         
-        prompt = f"""
-        Analyze the following conversation history.
-        Task 1: Summarize the conversation briefly (what was discussed, context, tone).
-        Task 2: Extract any KEY facts about the user or important constraints (e.g., user's name, preferences, specific requests).
+        # 生成唯一的 session_id
+        if not session_id:
+            self._session_count += 1
+            session_id = f"session_{self._session_count}_{int(__import__('time').time())}"
         
-        Conversation:
-        {history_text}
+        # 调用结构化处理器生成总结
+        summary = await self.structurer.generate_session_summary(history, session_id)
         
-        Output Format:
-        SUMMARY: <one paragraph summary>
-        FACTS:
-        - <fact 1>
-        - <fact 2>
-        (If no facts, just write "None")
-        """
-        
-        try:
-            messages = [
-                Message(role="system", content="You are a helpful memory assistant."),
-                Message(role="user", content=prompt)
-            ]
-            
-            # 调用 LLM
-            response = await self.llm.agenerate(messages)
-            content = response.content.strip()
-            
-            # 解析结果
-            summary = ""
-            facts = []
-            
-            lines = content.split('\n')
-            current_section = None
-            
-            for line in lines:
-                line = line.strip()
-                if line.startswith("SUMMARY:"):
-                    current_section = "SUMMARY"
-                    summary += line.replace("SUMMARY:", "").strip()
-                elif line.startswith("FACTS:"):
-                    current_section = "FACTS"
-                elif current_section == "SUMMARY":
-                    summary += " " + line
-                elif current_section == "FACTS" and line.startswith("-"):
-                    fact = line[1:].strip()
-                    if fact:
-                        facts.append(fact)
-                        
-            # 存储事实到长期记忆
-            if facts:
-                logger.info(f"Session 总结提取到 {len(facts)} 条事实")
-                for fact in facts:
-                    # [去重检查] 
-                    # 在添加前，先搜索是否有极高相似度的记录
-                    if self.vector_store.embedding_func:
-                        # 仅搜索最相似的一条
-                        duplicates = self.vector_store.search(fact, top_k=1, threshold=0.92, time_decay=False)
-                        if duplicates:
-                            logger.info(f"发现重复事实，跳过存储: {fact[:20]}... (相似度: {duplicates[0]['score']:.4f})")
-                            continue
-
-                    self.vector_store.add(fact, metadata={"source": "session_summary", "type": "fact"})
-            
-            return summary.strip()
-            
-        except Exception as e:
-            logger.error(f"Session 总结失败: {e}")
+        if summary:
+            logger.info(f"Session {session_id} 总结已存储")
+            return summary.summary
+        else:
             return ""
-
+    
+    # =========================================================================
+    # 阶段2：结构化处理（可手动触发或自动触发）
+    # =========================================================================
+    
+    async def process_pending_summaries(self) -> List[MemoryItem]:
+        """
+        阶段2：处理待结构化的总结
+        
+        可以手动调用，也会在总结累积到一定数量时自动触发
+        
+        Returns:
+            新提取的记忆项列表
+        """
+        items = await self.structurer.structure_pending_summaries()
+        return items
+    
+    # =========================================================================
+    # 检索接口
+    # =========================================================================
+    
     def get_context(self, query: str, top_k: int = 3) -> Tuple[List[Message], str]:
         """
-        获取构建 Prompt 所需的上下文。
-
-        TODO: [检索增强]
-        1. 查询改写：对原始 query 进行改写或扩展 (Query Expansion)，以提高检索命中率。
-        2. 重排序 (Rerank)：检索出更多结果 (top_k * n)，然后使用 Cross-Encoder 进行精细排序。
-        3. 动态参数：根据 query 的复杂度动态调整检索数量 (top_k)。
-
+        获取构建 Prompt 所需的上下文
+        
         Args:
             query: 用户当前的查询
             top_k: 检索长期记忆的数量
-
+        
         Returns:
             (short_term_messages, long_term_context_string)
         """
         # 1. 获取短期记忆
         short_term_msgs = self.short_term.get_messages()
         
-        # 2. 检索长期记忆
-        long_term_context = ""
-        if self.vector_store.embedding_func:
-            results = self.vector_store.search(query, top_k=top_k)
-            if results:
-                context_parts = []
-                for res in results:
-                    context_parts.append(f"- {res['text']}")
-                
-                long_term_context = "相关历史记忆:\n" + "\n".join(context_parts)
+        # 2. 检索长期记忆（结构化记忆项）
+        long_term_context = self.structurer.get_memory_context_string(query, top_k)
         
         return short_term_msgs, long_term_context
-
+    
+    async def get_enhanced_context(
+        self, 
+        query: str, 
+        top_k: int = 5
+    ) -> Tuple[List[Message], str, List[MemoryItem]]:
+        """
+        获取增强上下文（包含关联记忆）
+        
+        Args:
+            query: 查询文本
+            top_k: 返回数量
+        
+        Returns:
+            (short_term_messages, context_string, related_items)
+        """
+        short_term_msgs = self.short_term.get_messages()
+        
+        result = await self.structurer.retrieve_with_context(query, top_k)
+        
+        return (
+            short_term_msgs,
+            result["context"],
+            result["items"] + result["related"]
+        )
+    
     def clear(self):
-        """清空所有记忆"""
+        """清空短期记忆"""
         self.short_term.clear()
-        # vector_store 是否清空取决于需求，通常长期记忆不清空
-        # self.vector_store.documents = [] 
-        # self.vector_store.save()
-
+        logger.info("短期记忆已清空")
+    
+    def get_statistics(self) -> dict:
+        """获取记忆系统统计信息"""
+        return {
+            "short_term": {
+                "message_count": len(self.short_term.get_messages())
+            },
+            "summaries": {
+                "total": len(self.summary_store.summaries),
+                "unstructured": len(self.summary_store.get_unstructured())
+            },
+            "memory_items": self.item_store.get_statistics(),
+            "categories": self.category_manager.get_statistics(),
+            "graph": self.memory_graph.get_statistics()
+        }
+    
+    def get_all_memories(self) -> List[MemoryItem]:
+        """获取所有记忆项"""
+        return list(self.item_store.items.values())
+    
+    def get_memories_by_category(self, category: str) -> List[MemoryItem]:
+        """按分类获取记忆项"""
+        return self.item_store.get_by_category(category)
+    
+    def get_recent_summaries(self, count: int = 10) -> List[SessionSummary]:
+        """获取最近的会话总结"""
+        return self.summary_store.get_recent(count)

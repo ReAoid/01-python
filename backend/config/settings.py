@@ -28,8 +28,19 @@ class SystemConfig(BaseModel):
     data_dir: Optional[str] = None
 
 class MemoryConfig(BaseModel):
-    max_history_length: int = 10
+    # 短期记忆配置
+    max_history_length: int = 10  # 短期记忆保留的对话轮数
+    
+    # Embedding 配置
     embedding_model: str = "Qwen/Qwen3-Embedding-8B"
+    
+    # 结构化处理配置
+    min_summaries_for_structuring: int = 3  # 触发结构化的最小总结数
+    structuring_batch_size: int = 5  # 每次结构化处理的总结数量
+    
+    # 检索配置
+    retrieval_top_k: int = 5  # 默认检索数量
+    retrieval_threshold: float = 0.6  # 相似度阈值
 
 class TTSServerConfig(BaseModel):
     host: str = "127.0.0.1"

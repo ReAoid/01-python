@@ -701,8 +701,12 @@ class SessionManager:
                 old_history = self.current_llm.get_history()
                 if old_history:
                     logger.info("Summarizing previous session for context injection...")
-                    # 异步生成总结并提取事实
-                    summary_text = await self.memory_manager.summarize_session(old_history)
+                    # 异步生成总结（只存储总结，不存储原始对话）
+                    session_id = f"session_{int(time.time())}"
+                    summary_text = await self.memory_manager.summarize_session(
+                        old_history, 
+                        session_id=session_id
+                    )
 
             # 2. 创建新 Session (此时会自动拉取最新的 Memory)
             self.pending_llm = await self._create_llm_session(is_renew=True)
