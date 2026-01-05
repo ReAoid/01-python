@@ -17,9 +17,17 @@ class LLMConfig(BaseModel):
     max_tokens: Optional[int] = None
 
 class ApiConfig(BaseModel):
+    # 对话 LLM 配置
     llm_api_key: Optional[str] = None
     llm_base_url: Optional[str] = None
     llm_timeout: int = 60
+    
+    # Embedding 配置（独立）
+    embedding_api_key: Optional[str] = None
+    embedding_base_url: Optional[str] = None
+    embedding_timeout: int = 60
+    
+    # 其他 API
     serpapi_api_key: Optional[str] = None
 
 class SystemConfig(BaseModel):
@@ -126,6 +134,16 @@ class Settings(BaseSettings):
     @property
     def LLM_BASE_URL(self) -> Optional[str]:
         return self.api.llm_base_url
+    
+    @property
+    def EMBEDDING_API_KEY(self) -> Optional[str]:
+        """Embedding API Key"""
+        return self.api.embedding_api_key
+    
+    @property
+    def EMBEDDING_BASE_URL(self) -> Optional[str]:
+        """Embedding Base URL"""
+        return self.api.embedding_base_url
 
     model_config = SettingsConfigDict(
         env_nested_delimiter="__",  # 允许 LLM__DEFAULT_MODEL 覆盖 llm.default_model

@@ -137,24 +137,47 @@ class MemoryManager:
         logger.info(f"  - 分类数: {len(self.category_manager.categories)}")
     
     def _create_embedding_func(self) -> Optional[Callable[[str], List[float]]]:
-        """创建 embedding 函数"""
-        if not isinstance(self.llm, OpenaiLlm):
-            logger.warning("当前 LLM 不支持 embedding，长期记忆检索功能将受限")
+        """
+        创建 embedding 函数
+        使用独立的 embedding API 配置
+        """
+        try:
+            from openai import OpenAI
+            
+            # 使用独立的 embedding 配置
+            embedding_api_key = settings.EMBEDDING_API_KEY
+            embedding_base_url = settings.EMBEDDING_BASE_URL
+            embedding_timeout = settings.api.embedding_timeout
+            
+            if not embedding_api_key or not embedding_base_url:
+                logger.warning("Embedding API 配置不完整，长期记忆检索功能将受限")
+                return None
+            
+            # 创建独立的 embedding 客户端
+            embedding_client = OpenAI(
+                api_key=embedding_api_key,
+                base_url=embedding_base_url,
+                timeout=embedding_timeout
+            )
+            
+            def embedding_func(text: str) -> List[float]:
+                try:
+                    text = text.replace("\n", " ")
+                    response = embedding_client.embeddings.create(
+                        input=[text],
+                        model=self.embedding_model
+                    )
+                    return response.data[0].embedding
+                except Exception as e:
+                    logger.error(f"生成 embedding 失败: {e}")
+                    return []
+            
+            logger.info(f"Embedding 客户端初始化成功 (模型: {self.embedding_model})")
+            return embedding_func
+            
+        except Exception as e:
+            logger.error(f"创建 embedding 函数失败: {e}")
             return None
-        
-        def embedding_func(text: str) -> List[float]:
-            try:
-                text = text.replace("\n", " ")
-                response = self.llm.client.embeddings.create(
-                    input=[text],
-                    model=self.embedding_model
-                )
-                return response.data[0].embedding
-            except Exception as e:
-                logger.error(f"生成 embedding 失败: {e}")
-                return []
-        
-        return embedding_func
     
     # =========================================================================
     # 对话交互接口
