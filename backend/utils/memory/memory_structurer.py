@@ -15,6 +15,7 @@
 """
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+from pathlib import Path
 import re
 import json
 from loguru import logger
@@ -54,10 +55,50 @@ class MemoryStructurer:
         # 配置
         self.structuring_batch_size = settings.memory.structuring_batch_size
         self.min_summaries_for_structuring = settings.memory.min_summaries_for_structuring
+        
+        # 会话原始对话存储目录
+        self.sessions_dir = Path(self.summary_store.storage_dir) / "sessions"
+        self.sessions_dir.mkdir(parents=True, exist_ok=True)
     
     # =========================================================================
     # 阶段1：会话总结生成
     # =========================================================================
+    
+    def _save_raw_conversation(self, history: List[Message], session_id: str):
+        """
+        保存原始对话记录到文件
+        
+        Args:
+            history: 完整的对话历史
+            session_id: 会话ID
+        """
+        try:
+            # 构造文件路径
+            session_file = self.sessions_dir / f"{session_id}.json"
+            
+            # 转换消息为可序列化的格式
+            conversation_data = {
+                "session_id": session_id,
+                "timestamp": datetime.now().isoformat(),
+                "message_count": len(history),
+                "messages": [
+                    {
+                        "role": msg.role,
+                        "content": msg.content,
+                        "timestamp": getattr(msg, 'timestamp', None)
+                    }
+                    for msg in history
+                ]
+            }
+            
+            # 保存到文件
+            with open(session_file, 'w', encoding='utf-8') as f:
+                json.dump(conversation_data, f, ensure_ascii=False, indent=2)
+            
+            logger.info(f"原始对话已保存: {session_file}")
+            
+        except Exception as e:
+            logger.error(f"保存原始对话失败: {e}")
     
     async def generate_session_summary(
         self, 
@@ -68,7 +109,7 @@ class MemoryStructurer:
         阶段1：生成会话总结
         
         将完整的对话历史压缩为高质量的总结和关键要点
-        这是唯一会被存储的内容，原始对话不存储
+        在总结之前，会先保存原始对话记录到sessions文件夹
         
         Args:
             history: 完整的对话历史
@@ -80,6 +121,9 @@ class MemoryStructurer:
         if not history:
             logger.warning("对话历史为空，跳过总结")
             return None
+        
+        # 先保存原始对话记录
+        self._save_raw_conversation(history, session_id)
         
         # 过滤 system 消息，构造对话文本
         conversation_text = "\n".join([
