@@ -16,6 +16,7 @@
 import os
 from typing import List, Optional, Tuple, Callable
 from loguru import logger
+from datetime import datetime, timezone, timedelta
 
 from backend.core.message import Message
 from backend.core.llm import Llm
@@ -28,6 +29,24 @@ from .memory_store import SessionSummaryStore, MemoryItemStore
 from .memory_category import CategoryManager
 from .memory_graph import MemoryGraph
 from .memory_structurer import MemoryStructurer
+
+# =========================================================================
+# 工具函数
+# =========================================================================
+
+def generate_session_id() -> str:
+    """
+    生成唯一的 session_id（使用北京时间）
+    
+    格式: session_YYYY-MM-DD_HH-MM-SS
+    例如: session_2026-01-12_15-23-36
+    
+    Returns:
+        格式化的 session_id 字符串
+    """
+    beijing_tz = timezone(timedelta(hours=8))
+    beijing_time = datetime.now(beijing_tz)
+    return f"session_{beijing_time.strftime('%Y-%m-%d_%H-%M-%S')}"
 
 
 class MemoryManager:
@@ -186,10 +205,9 @@ class MemoryManager:
         if not history:
             return ""
         
-        # 生成唯一的 session_id
+        # 生成唯一的 session_id（使用北京时间）
         if not session_id:
-            self._session_count += 1
-            session_id = f"session_{self._session_count}_{int(__import__('time').time())}"
+            session_id = generate_session_id()
         
         # 调用结构化处理器生成总结
         summary = await self.structurer.generate_session_summary(history, session_id)

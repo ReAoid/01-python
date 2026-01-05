@@ -16,7 +16,7 @@ from backend.services.asr_service import ASRService
 from backend.services.tts_service import TTSService
 from backend.services.text_llm_client import TextLLMClient
 from backend.core.event_bus import event_bus, Event, EventType
-from backend.utils.memory.memory_manager import MemoryManager
+from backend.utils.memory.memory_manager import MemoryManager, generate_session_id
 from backend.utils.openai_llm import OpenaiLlm
 
 logger = logging.getLogger(__name__)
@@ -702,7 +702,7 @@ class SessionManager:
                 if old_history:
                     logger.info("Summarizing previous session for context injection...")
                     # 异步生成总结（只存储总结，不存储原始对话）
-                    session_id = f"session_{int(time.time())}"
+                    session_id = generate_session_id()
                     summary_text = await self.memory_manager.summarize_session(
                         old_history, 
                         session_id=session_id
