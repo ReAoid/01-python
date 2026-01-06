@@ -93,80 +93,26 @@ class ConfigMigration:
     def migrate_all(self):
         """执行所有迁移任务"""
         self.ensure_directories()
-        self._migrate_config_files()
-        self._migrate_memory_files()
-        
-        # 强制同步核心配置：如果项目目录下的配置比用户目录新，或者用户目录缺少关键 Key，可以在这里做更复杂的合并逻辑
-        # 目前简单起见，如果项目配置存在，而用户配置也存在，我们尝试打印日志
+        # TODO: 未来实现完整的配置和记忆文件迁移功能
+        # 当前临时禁用所有同步逻辑
+        # self._migrate_config_files()
+        # self._migrate_memory_files()
         pass
 
     def _migrate_config_files(self):
         """迁移配置文件"""
-        for filename in CONFIG_FILES:
-            target_path = self.user_config_dir / filename
-            
-            # 1. 如果目标不存在，尝试复制或创建
-            if not target_path.exists():
-                src_path = self.project_config_dir / filename
-                if src_path.exists():
-                    shutil.copy2(src_path, target_path)
-                    print(f"Copied default config to {target_path}")
-                    continue
-                
-                if filename in DEFAULT_CONFIG_DATA:
-                    self._save_json(target_path, DEFAULT_CONFIG_DATA[filename])
-                    print(f"Created default config at {target_path}")
-                    continue
-            
-            # 2. [关键修复] 如果是核心配置，强制检查是否为空或者是否需要更新
-            # 这是一个简单的“覆盖更新”策略，仅当用户文件内容明显缺失时使用
-            # 在开发环境中，我们希望项目目录下的 config 修改能生效
-            # 但在生产环境中，我们希望保留用户的修改
-            
-            if filename == 'core_config.json':
-                src_path = self.project_config_dir / filename
-                if src_path.exists():
-                    try:
-                        with open(src_path, 'r', encoding='utf-8') as f:
-                            project_data = json.load(f)
-                        with open(target_path, 'r', encoding='utf-8') as f:
-                            user_data = json.load(f)
-                        
-                        # 检查 key 是否缺失
-                        changed = False
-                        
-                        # 递归检查 api 配置
-                        if 'api' in project_data:
-                            if 'api' not in user_data:
-                                user_data['api'] = project_data['api']
-                                changed = True
-                            else:
-                                for k, v in project_data['api'].items():
-                                    if k not in user_data['api'] or not user_data['api'][k]:
-                                        # 如果用户没填，或者 key 不存在，用项目的
-                                        if v: # 只有当项目配置有值时才覆盖
-                                            user_data['api'][k] = v
-                                            changed = True
-                        
-                        if changed:
-                            self._save_json(target_path, user_data)
-                            print(f"Updated config at {target_path} with missing keys")
-                            
-                    except Exception as e:
-                        print(f"Error merging config: {e}")
+        # TODO: 未来实现配置文件迁移功能 - 从项目目录复制配置文件到用户目录
+        # 当前临时禁用配置文件同步逻辑
+        # 原功能：遍历 CONFIG_FILES，将项目配置目录的文件复制到用户配置目录
+        # 原功能：对于 core_config.json，会进行智能合并，补充缺失的配置项
+        pass
 
     def _migrate_memory_files(self):
         """迁移记忆文件"""
-        if not self.project_memory_dir.exists():
-            return
-
-        for item in self.project_memory_dir.glob('*'):
-            target_path = self.user_memory_dir / item.name
-            if not target_path.exists():
-                if item.is_file():
-                    shutil.copy2(item, target_path)
-                elif item.is_dir():
-                    shutil.copytree(item, target_path)
+        # TODO: 未来实现记忆文件迁移功能 - 从项目记忆目录复制到用户记忆目录
+        # 当前临时禁用记忆文件同步逻辑
+        # 原功能：遍历项目记忆目录，将文件和子目录复制到用户记忆目录
+        pass
 
     def _save_json(self, path: Path, data: Dict):
         with open(path, 'w', encoding='utf-8') as f:

@@ -60,14 +60,10 @@ class ConfigManager:
 
     def save_json_file(self, filename: str, data: Any):
         """保存 JSON 文件"""
-        # 总是保存到用户目录
-        path = migration.user_config_dir / filename
-        try:
-            migration.user_config_dir.mkdir(parents=True, exist_ok=True)
-            with open(path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"Error saving {filename}: {e}")
+        # TODO: 未来实现配置文件保存功能 - 将配置数据保存到用户目录
+        # 当前临时禁用配置文件写入逻辑
+        # 原功能：将 JSON 数据写入用户配置目录
+        pass
 
     # --- 特定业务数据管理 ---
 
