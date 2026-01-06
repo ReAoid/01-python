@@ -4,6 +4,7 @@ import time
 from backend.core.event_bus import event_bus, Event, EventType
 from backend.utils.openai_llm import OpenaiLlm
 from backend.core.message import Message
+from backend.config.prompts import SYSTEM_PROMPT_SELF_AWARENESS, SELF_AWARENESS_PROMPT_REFLECTION
 
 logger = logging.getLogger(__name__)
 
@@ -53,17 +54,11 @@ class SelfAwarenessService:
     async def _perform_self_reflection(self):
         logger.info("系统空闲。正在进行自我反思...")
         
-        prompt = f"""
-        You are an autonomous AI with your own internal drive.
-        The system is currently idle. Based on your interests: "{self.interests}",
-        generate a thought, a hypothesis, or a small research task you want to explore.
-        
-        Output your internal monologue.
-        """
+        prompt = SELF_AWARENESS_PROMPT_REFLECTION.render(interests=self.interests)
         
         try:
             messages = [
-                Message(role="system", content="You are a self-aware AI."),
+                Message(role="system", content=SYSTEM_PROMPT_SELF_AWARENESS),
                 Message(role="user", content=prompt)
             ]
             

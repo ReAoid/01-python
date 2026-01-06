@@ -3,6 +3,7 @@ import asyncio
 from backend.core.event_bus import event_bus, Event, EventType
 from backend.utils.openai_llm import OpenaiLlm
 from backend.core.message import Message
+from backend.config.prompts import SYSTEM_PROMPT_TASK_ANALYZER, TASK_PROMPT_ANALYZE_INTENT
 
 logger = logging.getLogger(__name__)
 
@@ -26,20 +27,11 @@ class TaskService:
         await self._analyze_intent(user_content)
 
     async def _analyze_intent(self, text: str):
-        prompt = f"""
-        Analyze the user's input for any latent actionable tasks that can be performed in the background.
-        Examples: "I wish I knew more about Python" -> Research Python.
-        "Remind me to buy milk" -> Set reminder.
-        
-        User Input: "{text}"
-        
-        If there is a clear task, describe it in JSON format: {{ "task": "description", "action": "research|reminder|..." }}.
-        If no task, return "NO_TASK".
-        """
+        prompt = TASK_PROMPT_ANALYZE_INTENT.render(user_input=text)
         
         try:
             messages = [
-                Message(role="system", content="You are a background task analyzer."),
+                Message(role="system", content=SYSTEM_PROMPT_TASK_ANALYZER),
                 Message(role="user", content=prompt)
             ]
             

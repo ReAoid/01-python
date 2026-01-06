@@ -5,6 +5,7 @@ from loguru import logger
 from backend.core.message import Message
 from backend.core.llm import Llm
 from backend.config import settings
+from backend.config.prompts import SYSTEM_PROMPT_CODE_ASSISTANT
 
 
 class OpenaiLlm(Llm):
@@ -211,7 +212,7 @@ if __name__ == '__main__':
         from backend.core.message import Message
 
         example_messages = [
-            Message(role="system", content="You are a helpful assistant that writes Python code."),
+            Message(role="system", content=SYSTEM_PROMPT_CODE_ASSISTANT),
             Message(role="user", content="写一个快速排序算法")
         ]
 

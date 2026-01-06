@@ -4,6 +4,7 @@ from typing import List, Dict, Optional
 from backend.utils.openai_llm import OpenaiLlm
 from backend.core.message import Message
 from backend.config import settings
+from backend.config.prompts import SYSTEM_PROMPT_DEFAULT_ASSISTANT
 
 logger = logging.getLogger(__name__)
 
@@ -39,11 +40,7 @@ class TextLLMClient:
 
     def _init_system_prompt(self, system_prompt: Optional[str]):
         """初始化 System Prompt"""
-        system_content = system_prompt
-
-        # 如果未传入，直接使用默认值
-        if not system_content:
-            system_content = "You are a helpful AI assistant."
+        system_content = system_prompt or SYSTEM_PROMPT_DEFAULT_ASSISTANT
 
         # 6. 初始化系统消息
         self.system_message = Message(role="system", content=system_content)

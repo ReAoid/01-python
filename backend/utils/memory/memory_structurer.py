@@ -23,6 +23,12 @@ from loguru import logger
 from backend.core.llm import Llm
 from backend.core.message import Message
 from backend.config.settings import settings
+from backend.config.prompts import (
+    SYSTEM_PROMPT_MEMORY_CONVERSATION_ANALYST,
+    SYSTEM_PROMPT_MEMORY_EXTRACTION_SPECIALIST,
+    MEMORY_PROMPT_SESSION_SUMMARY,
+    MEMORY_PROMPT_EXTRACTION,
+)
 from .memory_item import MemoryItem, MemoryType, SessionSummary
 from .memory_store import SessionSummaryStore, MemoryItemStore
 from .memory_category import CategoryManager
@@ -137,7 +143,7 @@ class MemoryStructurer:
         
         try:
             messages = [
-                Message(role="system", content="You are a skilled conversation analyst. Extract key information concisely."),
+                Message(role="system", content=SYSTEM_PROMPT_MEMORY_CONVERSATION_ANALYST),
                 Message(role="user", content=prompt)
             ]
             
@@ -175,37 +181,7 @@ class MemoryStructurer:
     
     def _build_summary_prompt(self, conversation_text: str) -> str:
         """构造总结 Prompt"""
-        return f"""Analyze this conversation and create a comprehensive summary.
-
-CONVERSATION:
-{conversation_text}
-
-TASKS:
-1. Write a concise summary (2-4 sentences) capturing the main topics and context
-2. Extract 3-8 KEY POINTS about the user - focus on:
-   - Personal facts (name, location, occupation)
-   - Preferences and habits
-   - Goals and plans
-   - Relationships mentioned
-   - Skills or expertise
-   - Opinions and attitudes
-
-OUTPUT FORMAT:
-SUMMARY:
-<your summary here>
-
-KEY_POINTS:
-- <point 1>
-- <point 2>
-- <point 3>
-...
-
-RULES:
-- Only extract USER-related information
-- Ignore greetings and pleasantries
-- Be specific and factual
-- If no significant information, write "No significant user information"
-"""
+        return MEMORY_PROMPT_SESSION_SUMMARY.render(conversation_text=conversation_text)
     
     def _parse_summary_response(self, response: str) -> tuple:
         """解析总结响应"""
@@ -303,7 +279,7 @@ RULES:
         
         try:
             messages = [
-                Message(role="system", content="You are a memory extraction specialist. Convert summaries into structured memory items."),
+                Message(role="system", content=SYSTEM_PROMPT_MEMORY_EXTRACTION_SPECIALIST),
                 Message(role="user", content=prompt)
             ]
             
@@ -347,36 +323,7 @@ RULES:
     
     def _build_extraction_prompt(self, input_text: str) -> str:
         """构造记忆提取 Prompt"""
-        return f"""Extract structured memory items from this session summary.
-
-INPUT:
-{input_text}
-
-TASK:
-Convert each piece of information into a structured memory item with:
-- content: A clear, standalone statement (1-2 sentences)
-- type: One of [preference, fact, experience, skill, opinion, relationship, habit, goal]
-- importance: 0.0-1.0 (how important is this to remember?)
-- tags: 1-3 relevant keywords
-
-OUTPUT FORMAT (JSON array):
-[
-  {{
-    "content": "The user likes drinking coffee in the morning",
-    "type": "preference",
-    "importance": 0.7,
-    "tags": ["coffee", "morning routine"]
-  }},
-  ...
-]
-
-RULES:
-- Each item should be self-contained and understandable alone
-- Use third person ("The user..." or "User's...")
-- Be specific, avoid vague statements
-- Importance: 0.9+ for identity/core preferences, 0.5-0.8 for general info, <0.5 for trivial
-- Return empty array [] if no valid memories
-"""
+        return MEMORY_PROMPT_EXTRACTION.render(input_text=input_text)
     
     def _parse_extraction_response(
         self, 
