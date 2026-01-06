@@ -1,24 +1,45 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/**
+ * 全局样式表 (Global Styles)
+ * -------------------------------------------------------------------------
+ * 定义应用的全局样式和自定义工具类。
+ * 
+ * 主要内容:
+ * 1. Tailwind 指令导入
+ * 2. 自定义组件样式
+ * 3. 滚动条样式定制
+ */
 
+/* Tailwind CSS 核心模块导入 */
+@tailwind base;       /* 基础样式重置 */
+@tailwind components; /* 组件工具类 */
+@tailwind utilities;  /* 实用工具类 */
+
+/* 自定义组件层 */
 @layer components {
+  /* 通用卡片样式 */
   .card {
     @apply bg-white border border-gray-200 rounded-2xl shadow-sm transition-all duration-300 overflow-hidden relative;
   }
   
-  /* Custom Scrollbar */
+  /* 自定义滚动条样式 (Custom Scrollbar) */
+  /* 滚动条整体 */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 6px;   /* 垂直滚动条宽度 */
+    height: 6px;  /* 水平滚动条高度 */
   }
+  
+  /* 滚动条轨道 */
   ::-webkit-scrollbar-track {
-    background: transparent;
+    background: transparent; /* 透明背景 */
   }
+  
+  /* 滚动条滑块 */
   ::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 rounded-full;
+    @apply bg-gray-300 rounded-full; /* 灰色圆角滑块 */
   }
+  
+  /* 滚动条滑块 (悬停态) */
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-400;
+    @apply bg-gray-400; /* 悬停时颜色加深 */
   }
 }
