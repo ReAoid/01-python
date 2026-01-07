@@ -121,7 +121,7 @@ async def websocket_chat(websocket: WebSocket):
     """WebSocket 聊天接口"""
     # 延迟导入，避免启动时的依赖问题
     try:
-        from backend.brain import SessionManager
+        from backend.services.brain import SessionManager
     except ImportError as e:
         logger.error(f"无法导入 SessionManager: {e}")
         await websocket.close(code=1011, reason="Server configuration error")

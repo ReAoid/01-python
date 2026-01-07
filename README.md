@@ -74,7 +74,7 @@ or
 ## 启动顺序
 1.启动TTS服务（如果启用了TTS）
 ```shell
-cd backend/utils
+cd backend
 python genie_server.py
 ```
 2.启动后端服务
