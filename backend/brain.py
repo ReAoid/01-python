@@ -219,6 +219,10 @@ class SessionManager:
         # 并行执行所有启动任务
         await asyncio.gather(*tasks)
         
+        # 如果需要音频输出但 TTS 未成功就绪，通知前端
+        if output_mode == OutputMode.TEXT_AND_AUDIO and not self.tts.tts_ready:
+            await self._send_text_to_frontend("【系统提示】语音服务启动失败，将仅以文本形式回复。")
+        
         logger.info(
             f"System components initialized in {time.time() - start_time:.2f}s (input: {input_mode.value}, output: {output_mode.value}).")
 
@@ -323,8 +327,10 @@ class SessionManager:
                     if new_mode == OutputMode.TEXT_AND_AUDIO and not self.tts.running:
                         logger.info("Switching to Audio mode: Lazy starting TTS service...")
                         # 启动 TTS，传入音频回调
-                        await self.tts.start(on_audio=self._send_audio_to_frontend)
-                        
+                        success = await self.tts.start(on_audio=self._send_audio_to_frontend)
+                        if not success:
+                            await self._send_text_to_frontend("【系统提示】语音服务启动失败，将继续以纯文本形式回复。")
+                    
                     self.output_mode = new_mode
                 except ValueError:
                     pass

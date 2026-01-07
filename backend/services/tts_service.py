@@ -356,11 +356,13 @@ class TTSService:
             ready = await self._wait_for_ready_signal(timeout=30.0)
             if not ready:
                 logger.error("❌ TTS 进程初始化失败 (超时或错误)")
-                # 如果失败，我们不标记为就绪
-                return
+                # 如果失败，重置运行状态
+                self.running = False
+                return False
         except Exception as e:
             logger.error(f"等待 TTS 就绪时出错: {e}")
-            return
+            self.running = False
+            return False
 
         logger.info(f"✅ TTS 服务已启动 (耗时 {time.time() - start_time:.2f}秒)")
 
@@ -371,6 +373,8 @@ class TTSService:
         async with self.cache_lock:
             self.tts_ready = True
         await self._flush_pending_chunks()
+
+        return True
 
     async def stop(self):
         """停止 TTS 服务并清理资源。"""
