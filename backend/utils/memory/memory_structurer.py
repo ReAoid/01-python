@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 import re
 import json
-from loguru import logger
+import logging
 
 from backend.core.llm import Llm
 from backend.core.message import Message
@@ -34,6 +34,7 @@ from .memory_store import SessionSummaryStore, MemoryItemStore
 from .memory_category import CategoryManager
 from .memory_graph import MemoryGraph
 
+logger = logging.getLogger(__name__)
 
 class MemoryStructurer:
     """

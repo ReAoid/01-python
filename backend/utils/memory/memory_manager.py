@@ -15,7 +15,7 @@
 """
 import os
 from typing import List, Optional, Tuple, Callable
-from loguru import logger
+import logging
 from datetime import datetime, timezone, timedelta
 
 from backend.core.message import Message
@@ -29,6 +29,8 @@ from .memory_store import SessionSummaryStore, MemoryItemStore
 from .memory_category import CategoryManager
 from .memory_graph import MemoryGraph
 from .memory_structurer import MemoryStructurer
+
+logger = logging.getLogger(__name__)
 
 # =========================================================================
 # 工具函数

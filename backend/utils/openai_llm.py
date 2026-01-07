@@ -1,12 +1,13 @@
 import os
 from typing import List, Generator, Dict, AsyncGenerator
 from openai import OpenAI, AsyncOpenAI
-from loguru import logger
+import logging
 from backend.core.message import Message
 from backend.core.llm import Llm
 from backend.config import settings
 from backend.config.prompts import SYSTEM_PROMPT_CODE_ASSISTANT
 
+logger = logging.getLogger(__name__)
 
 class OpenaiLlm(Llm):
     """

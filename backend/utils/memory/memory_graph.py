@@ -12,11 +12,12 @@ from datetime import datetime
 from pathlib import Path
 import json
 from collections import defaultdict
-from loguru import logger
+import logging
 
 from backend.config import migration
 from .memory_item import MemoryItem
 
+logger = logging.getLogger(__name__)
 
 class RelationType:
     """关系类型"""

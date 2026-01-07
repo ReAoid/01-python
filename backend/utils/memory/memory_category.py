@@ -10,11 +10,12 @@ from typing import List, Dict, Optional, Any
 from datetime import datetime
 from pathlib import Path
 import json
-from loguru import logger
+import logging
 
 from backend.config import migration
 from .memory_item import MemoryItem, MemoryType
 
+logger = logging.getLogger(__name__)
 
 # 系统预定义分类
 SYSTEM_CATEGORIES = {

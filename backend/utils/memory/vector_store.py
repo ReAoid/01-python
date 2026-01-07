@@ -5,10 +5,12 @@ import time
 import asyncio
 import shutil
 from typing import List, Dict, Any, Callable, Optional
-from loguru import logger
+import logging
 from concurrent.futures import ThreadPoolExecutor
 
 from backend.config import migration
+
+logger = logging.getLogger(__name__)
 
 class VectorStore:
     """

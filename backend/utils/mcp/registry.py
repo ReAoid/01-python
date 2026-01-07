@@ -9,8 +9,9 @@ import os
 import sys
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from loguru import logger
+import logging
 
+logger = logging.getLogger(__name__)
 
 class MCPRegistry:
     """MCP 插件注册中心"""

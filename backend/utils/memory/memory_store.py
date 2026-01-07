@@ -15,11 +15,12 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
-from loguru import logger
+import logging
 
 from backend.config import migration
 from .memory_item import MemoryItem, MemoryType, SessionSummary
 
+logger = logging.getLogger(__name__)
 
 class BaseMemoryStore:
     """
