@@ -21,6 +21,8 @@ import signal
 from pathlib import Path
 from typing import Optional
 
+from backend.core.logger import init_logging, shutdown_logging
+
 # 添加项目根目录到 Python 路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -196,12 +198,14 @@ def start_genie_tts_server(
 
 
 if __name__ == "__main__":
-    # 配置日志
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    # 配置日志（中央队列 + loguru + Genie 专用日志文件）
+    init_logging(
+        log_level="INFO",
+        log_file="logs/genie.log",
+        rotation="10 MB",
+        retention="7 days",
     )
-    
+
     # 读取默认配置（用于帮助信息）
     default_host = "127.0.0.1"
     default_port = 8001
@@ -245,10 +249,14 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    # 启动服务器（None 值会被函数自动处理）
-    start_genie_tts_server(
-        host=args.host,
-        port=args.port,
-        workers=args.workers,
-        genie_data_dir=args.data_dir
-    )
+    try:
+        # 启动服务器（None 值会被函数自动处理）
+        start_genie_tts_server(
+            host=args.host,
+            port=args.port,
+            workers=args.workers,
+            genie_data_dir=args.data_dir
+        )
+    finally:
+        # 确保日志队列线程优雅关闭
+        shutdown_logging()

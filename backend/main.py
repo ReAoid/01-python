@@ -3,6 +3,8 @@ import logging
 from pathlib import Path
 import asyncio
 
+from backend.core.logger import init_logging, shutdown_logging
+
 # 添加项目根目录到 Python 路径
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
@@ -18,10 +20,12 @@ from backend.services.memory_service import MemoryService
 from backend.services.task_service import TaskService
 from backend.services.self_awareness_service import SelfAwarenessService
 
-# 配置日志
-logging.basicConfig(
-    level=getattr(logging, settings.system.log_level.upper(), logging.INFO),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# 初始化统一日志系统（中央队列 + loguru）
+init_logging(
+    log_level=settings.system.log_level,
+    log_file="logs/backend.log",  # 后端总日志文件
+    rotation="10 MB",
+    retention="7 days",
 )
 logger = logging.getLogger(__name__)
 
@@ -69,6 +73,12 @@ async def startup_event():
         logger.info("后台服务已初始化。")
     except Exception as e:
         logger.error(f"启动后台服务失败: {e}")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """后台服务关闭时清理日志队列等资源"""
+    shutdown_logging()
 
 @app.get("/")
 async def root():
