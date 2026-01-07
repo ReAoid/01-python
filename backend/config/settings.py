@@ -63,11 +63,18 @@ class TTSConfig(BaseModel):
     language: str = "zh"
     server: TTSServerConfig = Field(default_factory=TTSServerConfig)
 
+class ASRAudioConfig(BaseModel):
+    sample_rate: int = 16000
+    channels: int = 1
+    sample_width: int = 2
+
+
 class ASRConfig(BaseModel):
     enabled: bool = False
     engine: str = "whisper"
     model: str = "base"
     language: str = "zh"
+    audio: ASRAudioConfig = Field(default_factory=ASRAudioConfig)
 
 # =============================================================================
 # 自定义 JSON Source

@@ -71,13 +71,8 @@ class SessionManager:
         self.queue = message_queue
 
         # --- 管道组件 ---
-        # ASRService 需要字典配置
-        asr_config = {
-            "sample_rate": 16000,
-            "channels": 1,
-            "sample_width": 2
-        }
-        self.asr = ASRService(asr_config)
+        # ASRService 从 settings 中构建自身配置
+        self.asr = ASRService(self.config)
         # TTSService 使用 settings 对象
         self.tts = TTSService(self.config)
 
@@ -204,7 +199,7 @@ class SessionManager:
             tasks.append(self.tts.start(on_audio=self._send_audio_to_frontend))
 
         # 2. 启动 ASR (仅在语音输入模式下启动)
-        if input_mode == InputMode.AUDIO:
+        if input_mode in (InputMode.AUDIO, InputMode.REALTIME_AUDIO):
             tasks.append(self.asr.start(
                 on_transcript=self._handle_user_input,  # ASR 转录结果 -> LLM
                 on_vad_trigger=self._handle_interrupt  # 用户打断 -> 停止生成
@@ -822,6 +817,10 @@ class SessionManager:
         # 取消当前的消费者任务
         if self.consumer_task and not self.consumer_task.done():
             self.consumer_task.cancel()
+
+        # 清空 ASR 缓冲，避免残留音频影响后续识别
+        if self.asr:
+            await self.asr.clear_buffer()
 
         # 取消 LLM 生成
         if self.current_llm:
