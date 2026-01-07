@@ -35,7 +35,7 @@ const messages = ref([
     id: 1,
     role: 'ai',
     content: '你好！我是你的私人AI助手。有什么我可以帮你的吗？',
-    timestamp: '10:00',
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     type: 'text'
   }
 ])
@@ -58,7 +58,7 @@ const isConnected = ref(false)
 const reconnectInterval = ref(null)
 
 // 角色名称
-const characterName = ref('AI Assistant')
+const characterName = ref('灵依')
 
 // 语音相关状态
 const isVoiceMode = ref(false) // 是否开启语音回复 (TTS)
@@ -68,7 +68,9 @@ const isRecording = ref(false) // 是否正在录音
 const isInterrupted = ref(false) // 是否处于打断状态 (用于丢弃滞后的音频包)
 
 // 后端状态
-const backendState = ref('idle') // idle, thinking, speaking, interrupted
+// idle, thinking, speaking, interrupted
+// idle=空闲，thinking=思考中，speaking=说话中，interrupted=被打断
+const backendState = ref('idle') 
 
 // 快捷操作按钮配置 (暂未启用，预留功能)
 const quickActions = [

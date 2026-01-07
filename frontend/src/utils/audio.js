@@ -138,19 +138,11 @@ export class AudioManager {
         // inputChannels: 0 (不需要输入)
         // outputChannels: 1 (单声道输出)
         this.playerProcessor = this.audioContext.createScriptProcessor(4096, 0, 1);
-        
-        let debugCounter = 0; // 调试计数器 (用于限制日志输出频率)
 
         // 音频处理回调: 每次需要填充音频缓冲区时触发
         this.playerProcessor.onaudioprocess = (e) => {
             const outputData = e.outputBuffer.getChannelData(0);
             const outputLength = outputData.length;
-            
-            // 调试：每 100 次回调 (约 8-9秒) 打印一次状态，或者在刚开始时打印
-            debugCounter++;
-            // if (debugCounter === 1 || debugCounter % 100 === 0) {
-            //      console.log(`[AudioDebug] ctx.state=${this.audioContext.state}, ctx.rate=${this.audioContext.sampleRate}, queueLen=${this.audioQueue.length}, leftover=${this.resampleLeftover ? this.resampleLeftover.length : 0}`);
-            // }
 
             // [关键] 如果 queue 为空且没有 leftover，直接填充静音并返回
             // 避免下面的逻辑在没有数据时产生错误的静音处理或死循环
@@ -158,9 +150,6 @@ export class AudioManager {
                 for (let i = 0; i < outputLength; i++) {
                     outputData[i] = 0;
                 }
-                // if (debugCounter % 50 === 0) {
-                //      console.debug("[AudioManager] Buffer underrun (Empty)");
-                // }
                 return;
             }
 
