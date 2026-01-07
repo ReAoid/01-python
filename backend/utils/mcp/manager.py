@@ -4,10 +4,11 @@ MCP 管理器
 """
 
 from typing import Dict, Any, List, Optional
-from loguru import logger
+import logging
 from backend.utils.mcp.registry import get_registry
 from backend.utils.mcp.adapter import MCPAdapterTool
 
+logger = logging.getLogger(__name__)
 
 class MCPManager:
     """MCP 管理器 - 统一的插件管理和调用入口"""

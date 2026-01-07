@@ -5,10 +5,11 @@ MCP 适配器
 
 import asyncio
 from typing import Dict, Any, List
-from loguru import logger
+import logging
 from backend.core.tool import Tool, ToolParameter
 from backend.utils.mcp.registry import MCPRegistry
 
+logger = logging.getLogger(__name__)
 
 class MCPAdapterTool(Tool):
     """

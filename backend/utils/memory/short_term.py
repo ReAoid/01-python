@@ -1,6 +1,8 @@
 from typing import List, Dict, Optional
-from loguru import logger
+import logging
 from backend.core.message import Message
+
+logger = logging.getLogger(__name__)
 
 class ShortTermMemory:
     """

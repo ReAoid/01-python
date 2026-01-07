@@ -5,9 +5,10 @@
 import os
 import json
 from typing import Dict, Any
-from loguru import logger
+import logging
 from backend.config import settings
 
+logger = logging.getLogger(__name__)
 
 class SearchAgent:
     """基于 SerpApi 的网页搜索 Agent"""
