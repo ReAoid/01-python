@@ -20,9 +20,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 try:
-    from backend.utils.genie_client import GenieTTS
+    from backend.utils.tts.genie_engine import _GenieTTSClient as GenieTTS
 except ImportError:
-    print("❌ 无法导入 backend.utils.genie_client，请检查路径设置")
+    print("❌ 无法导入 backend.utils.tts.genie_engine，请检查路径设置")
     sys.exit(1)
 
 

@@ -10,7 +10,8 @@ from pathlib import Path
 from multiprocessing import Process, Queue
 from typing import Optional, Callable, Dict, Any, Union, Tuple
 
-from backend.utils.genie_client import GenieTTS, ensure_genie_data
+from backend.genie_server import ensure_genie_data
+from backend.utils.tts.worker import tts_worker_main as external_tts_worker_main
 
 logger = logging.getLogger(__name__)
 
@@ -20,142 +21,9 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# TTS 工作进程逻辑
-# ============================================================================
-
-def tts_worker_main(request_queue: Queue, response_queue: Queue, config: Dict[str, Any]):
-    """
-    TTS 工作进程入口点。
-    
-    在独立的进程中运行，负责初始化 GenieTTS 客户端并处理合成请求。
-    
-    Args:
-        request_queue: 接收 (speech_id, text) 请求的队列。
-        response_queue: 发送音频数据或控制信号的队列。
-        config: TTS 配置字典。
-    """
-    try:
-        asyncio.run(tts_worker_async(request_queue, response_queue, config))
-    except Exception as e:
-        logger.error(f"TTS 工作进程失败: {e}")
-        traceback.print_exc()
-        try:
-            response_queue.put(("__ready__", False))
-        except:
-            pass
-
-
-async def tts_worker_async(request_queue: Queue, response_queue: Queue, config: Dict[str, Any]):
-    """
-    TTS 工作进程的异步主循环。
-    
-    Args:
-        request_queue: 请求队列。
-        response_queue: 响应队列。
-        config: 配置字典。
-    """
-    logger.info("TTS Worker started")
-
-    # 初始化 Genie TTS 客户端
-    host = config.get('host', '127.0.0.1')
-    port = config.get('port', 8001)
-    genie_client = GenieTTS(host=host, port=port)
-
-    # 记录正在处理的语音合成任务的 ID，用于中断检测。
-    # 比较 speech_id 和 current_speech_id 来判断是否需要中断当前任务。
-    current_speech_id = None
-    synthesis_task: Optional[asyncio.Task] = None
-
-    # 连接和设置
-    try:
-        # 1. 连接到 Genie TTS 服务器
-        logger.info(f"正在连接到 Genie TTS {host}:{port}...")
-        if not await genie_client.connect(timeout=10):
-            logger.error("无法连接到 Genie TTS 服务器")
-            response_queue.put(("__ready__", False))
-            return
-
-        # 加载配置
-        character = config.get('character')
-        model_dir = config.get('model_dir')
-        language = config.get('language', 'zh')
-
-        # 2. 加载角色
-        if character and model_dir:
-            logger.info(f"正在加载角色: {character}")
-            if not await genie_client.load_character(character, model_dir, language):
-                logger.error("加载角色失败")
-                response_queue.put(("__ready__", False))
-                return
-
-        # 设置参考音频
-        ref_audio_path = config.get('reference_audio_path')
-        ref_audio_text = config.get('reference_audio_text')
-
-        # 3. 设置参考音频
-        if ref_audio_path and ref_audio_text:
-            logger.info(f"正在设置参考音频: {ref_audio_path}")
-            if not await genie_client.set_reference_audio(ref_audio_path, ref_audio_text, language):
-                logger.error("设置参考音频失败")
-                response_queue.put(("__ready__", False))
-                return
-
-        # 4. 发送就绪信号
-        logger.info("TTS Worker ready")
-        response_queue.put(("__ready__", True))
-
-        # 5. 请求处理循环
-        loop = asyncio.get_running_loop()
-
-        while True:
-            try:
-                # 使用 executor 避免在等待多进程队列时阻塞 asyncio 循环
-                item = await loop.run_in_executor(None, request_queue.get)
-            except Exception as e:
-                logger.error(f"从队列获取数据时出错: {e}")
-                break
-
-            speech_id, text = item
-
-            # 终止信号
-            if speech_id is None and text is None:
-                logger.info("收到终止信号")
-                break
-
-            # 中断检查
-            if speech_id != current_speech_id:
-                if current_speech_id is not None:
-                    logger.info(f"中断语音 {current_speech_id} -> {speech_id}")
-                current_speech_id = speech_id
-
-            if text:
-                await process_text_chunk(genie_client, text, response_queue)
-
-    finally:
-        if genie_client:
-            await genie_client.close()
-        logger.info("TTS Worker 已停止")
-
-
-async def process_text_chunk(client: GenieTTS, text: str, response_queue: Queue):
-    """
-    处理单个文本块并流式传输音频。
-    
-    Args:
-        client: 已初始化的 GenieTTS 客户端。
-        text: 要合成的文本。
-        response_queue: 响应队列。
-    """
-    try:
-        async for audio_chunk in client.synthesize_stream(text):
-            response_queue.put(audio_chunk)
-    except Exception as e:
-        logger.error(f"合成失败: {e}")
-
-
-# ============================================================================
 # TTS 服务管理器（主进程）
 # ============================================================================
+
 
 class TTSService:
     """
@@ -344,7 +212,7 @@ class TTSService:
 
         # 启动子进程
         self.tts_process = Process(
-            target=tts_worker_main,
+            target=external_tts_worker_main,
             args=(self.request_queue, self.response_queue, self.tts_config)
         )
         self.tts_process.daemon = True
