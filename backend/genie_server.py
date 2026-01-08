@@ -53,11 +53,13 @@ def ensure_genie_data(genie_data_dir: Optional[str] = None) -> Path:
         if genie_data_path.name != 'GenieData':
              genie_data_path = genie_data_path / 'GenieData'
     else:
-        # 如果没有指定，自动使用 backend/config/tts/GenieData 作为默认位置
+        # 如果没有指定，自动使用 backend/data/tts/GenieData 作为默认位置
         if os.environ.get('GENIE_DATA_DIR'):
             genie_data_path = Path(os.environ['GENIE_DATA_DIR'])
         else:
-            default_data_dir = Path(__file__).parent / 'config' / 'tts' / 'GenieData'
+            # 使用统一的 paths 模块获取 TTS 目录
+            from backend.config import paths
+            default_data_dir = paths.TTS_DIR / 'GenieData'
             genie_data_path = default_data_dir
     
     # 设置环境变量（因为 genie_tts 库可能会用到）
