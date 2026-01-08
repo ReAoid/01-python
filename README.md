@@ -78,15 +78,15 @@ npm install
 ## TTS部署
 1.部署模型
 ```text
-直接执行backend/utils/genie_client.py文件自动下载
+直接执行backend/genie_server.py文件自动下载
 or
-将https://huggingface.co/High-Logic/Genie/tree/main/GenieData下的文件放到backend/config/tts/GenieData下
+将https://huggingface.co/High-Logic/Genie/tree/main/GenieData下的文件放到backend/data/tts/GenieData下
 ```
 2.部署参考音频
 ```text
-直接执行backend/utils/genie_client.py文件自动下载
+直接执行backend/genie_server.py文件自动下载
 or
-将https://huggingface.co/High-Logic/Genie/tree/main/CharacterModels下的文件放到backend/config/tts/GenieData/CharacterModels下
+将https://huggingface.co/High-Logic/Genie/tree/main/CharacterModels下的文件放到backend/data/tts/GenieData/CharacterModels下
 ```
 ## 启动顺序
 1.启动TTS服务（如果启用了TTS）
