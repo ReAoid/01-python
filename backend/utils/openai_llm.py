@@ -17,18 +17,18 @@ class OpenaiLlm(Llm):
 
     def __init__(self, model: str = None, api_key: str = None, base_url: str = None, timeout: int = None):
         """
-        初始化客户端。优先使用传入参数,如果未提供,则从配置管理器加载(支持配置文件和环境变量)。
+        初始化客户端。优先使用传入参数，如果未提供，则从配置加载。
         
         Args:
             model: 模型ID
-            api_key: API密钥
-            base_url: API服务地址
+            api_key: API 密钥
+            base_url: API 服务地址
             timeout: 超时时间(秒)
         """
-        self.model = model or settings.llm.default_model
-        api_key = api_key or settings.api.llm_api_key
-        base_url = base_url or settings.api.llm_base_url
-        timeout = timeout or settings.api.llm_timeout
+        self.model = model or settings.chat_llm.model
+        api_key = api_key or settings.chat_llm.api.key
+        base_url = base_url or settings.chat_llm.api.base_url
+        timeout = timeout or settings.chat_llm.api.timeout
 
         if not all([self.model, api_key, base_url]):
             error_msg = (
@@ -63,7 +63,7 @@ class OpenaiLlm(Llm):
         Returns:
             Message: 完整的响应消息
         """
-        default_temp = settings.llm.temperature
+        default_temp = settings.chat_llm.temperature
         temperature = kwargs.get("temperature", default_temp)
 
         logger.info(f"正在调用 {self.model} 模型(非流式)...")
@@ -98,7 +98,7 @@ class OpenaiLlm(Llm):
         Returns:
             Message: 完整的响应消息
         """
-        default_temp = settings.llm.temperature
+        default_temp = settings.chat_llm.temperature
         temperature = kwargs.get("temperature", default_temp)
 
         logger.info(f"正在异步调用 {self.model} 模型(非流式)...")
@@ -133,7 +133,7 @@ class OpenaiLlm(Llm):
         Yields:
             str: 流式生成的文本片段
         """
-        default_temp = settings.llm.temperature
+        default_temp = settings.chat_llm.temperature
         temperature = kwargs.get("temperature", default_temp)
 
         logger.info(f"正在调用 {self.model} 模型(流式)...")
@@ -171,7 +171,7 @@ class OpenaiLlm(Llm):
         Yields:
             str: 流式生成的文本片段
         """
-        default_temp = settings.llm.temperature
+        default_temp = settings.chat_llm.temperature
         temperature = kwargs.get("temperature", default_temp)
 
         logger.info(f"正在异步调用 {self.model} 模型(流式)...")

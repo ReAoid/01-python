@@ -18,16 +18,26 @@ pip install -r requirements.txt
 ```json
 {
     "_comment": "核心配置文件 - 应用程序的主配置",
-    "llm": {
-        "default_model": "替换模型",
-        "default_provider": "openai",
-        "temperature": 0.7
+    "chat_llm": {
+        "_comment": "聊天大语言模型配置",
+        "model": "替换为聊天模型",
+        "provider": "openai",
+        "temperature": 0.7,
+        "max_tokens": null,
+        "api": {
+            "key": "替换为LLM API Key",
+            "base_url": "替换为LLM API 服务地址",
+            "timeout": 60
+        }
     },
-    "api": {
-        "llm_api_key": "替换key",
-        "llm_base_url": "替换请求地址",
-        "llm_timeout": 60,
-        "serpapi_api_key": "替换key"
+    "embedding_llm": {
+        "_comment": "向量嵌入模型配置",
+        "model": "Qwen/Qwen3-Embedding-8B",
+        "api": {
+            "key": "替换为Embedding API Key",
+            "base_url": "替换为Embedding API 服务地址",
+            "timeout": 60
+        }
     },
     "system": {
         "debug": true,
@@ -35,12 +45,15 @@ pip install -r requirements.txt
     },
     "memory": {
         "max_history_length": 100,
-        "embedding_model": "替换使用模型"
+        "min_summaries_for_structuring": 3,
+        "structuring_batch_size": 5,
+        "retrieval_top_k": 5,
+        "retrieval_threshold": 0.6
     },
     "tts": {
         "enabled": true,
         "engine": "genie",
-        "genie_data_dir": "backend/config/tts",
+        "genie_data_dir": "backend/data/tts",
         "server": {
             "host": "127.0.0.1",
             "port": 8001,
@@ -48,6 +61,10 @@ pip install -r requirements.txt
         },
         "active_character": "feibi",
         "language": "zh"
+    },
+    "third_party_api": {
+        "_comment": "第三方服务API配置",
+        "serpapi_api_key": "替换为SerpApi Key（可选）"
     }
 }
 ```

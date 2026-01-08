@@ -9,24 +9,27 @@ from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSett
 # 子配置模型
 # =============================================================================
 
-class LLMConfig(BaseModel):
-    default_model: str = "gpt-3.5-turbo"
-    default_provider: str = "openai"
+class LLMApiConfig(BaseModel):
+    """LLM API 端点配置（聊天或嵌入）"""
+    key: Optional[str] = None
+    base_url: Optional[str] = None
+    timeout: int = 60
+
+class ChatLLMConfig(BaseModel):
+    """聊天大语言模型配置"""
+    model: str = "gpt-3.5-turbo"
+    provider: str = "openai"
     temperature: float = 0.7
     max_tokens: Optional[int] = None
+    api: LLMApiConfig = Field(default_factory=LLMApiConfig)
 
-class ApiConfig(BaseModel):
-    # 对话 LLM 配置
-    llm_api_key: Optional[str] = None
-    llm_base_url: Optional[str] = None
-    llm_timeout: int = 60
-    
-    # Embedding 配置（独立）
-    embedding_api_key: Optional[str] = None
-    embedding_base_url: Optional[str] = None
-    embedding_timeout: int = 60
-    
-    # 其他 API
+class EmbeddingLLMConfig(BaseModel):
+    """向量嵌入模型配置"""
+    model: str = "Qwen/Qwen3-Embedding-8B"
+    api: LLMApiConfig = Field(default_factory=LLMApiConfig)
+
+class ThirdPartyApiConfig(BaseModel):
+    """第三方服务 API 配置"""
     serpapi_api_key: Optional[str] = None
 
 class SystemConfig(BaseModel):
@@ -109,7 +112,7 @@ class JsonConfigSettingsSource(PydanticBaseSettingsSource):
     def __call__(self) -> Dict[str, Any]:
         d: Dict[str, Any] = {}
         for field_name, field in self.settings_cls.model_fields.items():
-            # 尝试从 JSON 根目录获取 (例如 llm, api)
+            # 从 JSON 根目录获取配置 (例如 chat_llm, embedding_llm, third_party_api)
             if field_name in self.config_data:
                 d[field_name] = self.config_data[field_name]
         return d
@@ -122,38 +125,32 @@ class Settings(BaseSettings):
     """
     应用全局配置
     支持从 core_config.json 加载
+    
+    配置结构：
+    - chat_llm: 聊天大语言模型配置
+    - embedding_llm: 向量嵌入模型配置
+    - system: 系统配置
+    - memory: 记忆系统配置
+    - tts: 文本转语音配置
+    - asr: 语音识别配置
+    - third_party_api: 第三方服务 API 配置
     """
-    # 子模块配置
-    llm: LLMConfig = Field(default_factory=LLMConfig)
-    api: ApiConfig = Field(default_factory=ApiConfig)
+    # ========== LLM 配置 ==========
+    chat_llm: ChatLLMConfig = Field(default_factory=ChatLLMConfig)
+    embedding_llm: EmbeddingLLMConfig = Field(default_factory=EmbeddingLLMConfig)
+    
+    # ========== 系统配置 ==========
     system: SystemConfig = Field(default_factory=SystemConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     tts: TTSConfig = Field(default_factory=TTSConfig)
     asr: ASRConfig = Field(default_factory=ASRConfig)
-
-    # 顶层配置 (如果有)
+    third_party_api: ThirdPartyApiConfig = Field(default_factory=ThirdPartyApiConfig)
+    
+    # ========== 应用信息 ==========
     app_name: str = "灵依"
-    
-    @property
-    def LLM_API_KEY(self) -> Optional[str]:
-        return self.api.llm_api_key
-        
-    @property
-    def LLM_BASE_URL(self) -> Optional[str]:
-        return self.api.llm_base_url
-    
-    @property
-    def EMBEDDING_API_KEY(self) -> Optional[str]:
-        """Embedding API Key"""
-        return self.api.embedding_api_key
-    
-    @property
-    def EMBEDDING_BASE_URL(self) -> Optional[str]:
-        """Embedding Base URL"""
-        return self.api.embedding_base_url
 
     model_config = SettingsConfigDict(
-        env_nested_delimiter="__",  # 允许 LLM__DEFAULT_MODEL 覆盖 llm.default_model
+        env_nested_delimiter="__",  # 允许 CHAT_LLM__MODEL 覆盖 chat_llm.model
         extra="ignore"
     )
 

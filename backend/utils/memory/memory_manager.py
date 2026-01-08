@@ -91,7 +91,7 @@ class MemoryManager:
         os.makedirs(self.storage_dir, exist_ok=True)
         
         # 从配置读取 embedding 模型
-        self.embedding_model = settings.memory.embedding_model
+        self.embedding_model = settings.embedding_llm.model
         
         # ============================================================
         # 初始化各个记忆模块
@@ -147,9 +147,9 @@ class MemoryManager:
             from openai import OpenAI
             
             # 使用独立的 embedding 配置
-            embedding_api_key = settings.EMBEDDING_API_KEY
-            embedding_base_url = settings.EMBEDDING_BASE_URL
-            embedding_timeout = settings.api.embedding_timeout
+            embedding_api_key = settings.embedding_llm.api.key
+            embedding_base_url = settings.embedding_llm.api.base_url
+            embedding_timeout = settings.embedding_llm.api.timeout
             
             if not embedding_api_key or not embedding_base_url:
                 logger.warning("Embedding API 配置不完整，长期记忆检索功能将受限")

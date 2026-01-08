@@ -14,11 +14,11 @@ class SearchAgent:
     """基于 SerpApi 的网页搜索 Agent"""
 
     def __init__(self):
-        """初始化搜索 Agent"""
+        """初始化戠索 Agent"""
         # 读取配置
-        self.api_key = settings.api.serpapi_api_key
+        self.api_key = settings.third_party_api.serpapi_api_key
         if not self.api_key:
-            logger.warning("SERPAPI_API_KEY 未配置,搜索功能可能无法使用")
+            logger.warning("SerpApi API Key 未配置，戠索功能可能无法使用")
 
     def _search_serpapi(self, query: str) -> str:
         """
