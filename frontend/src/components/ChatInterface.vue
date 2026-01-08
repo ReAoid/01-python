@@ -52,6 +52,9 @@ const chatContainer = ref(null)
 // 侧边栏显示状态 (桌面端默认显示，移动端默认隐藏)
 const showSidebar = ref(true)
 
+// 当前激活的标签页
+const activeTab = ref('chat')
+
 // WebSocket 连接实例
 const socket = ref(null)
 const isConnected = ref(false)
@@ -389,6 +392,14 @@ const toggleSidebar = () => {
   showSidebar.value = !showSidebar.value
 }
 
+/**
+ * 切换标签页
+ */
+const handleTabChange = (tabId) => {
+  activeTab.value = tabId
+  console.log('[UI] Tab changed to:', tabId)
+}
+
 // 生命周期钩子
 onMounted(() => {
   connectWebSocket();
@@ -418,177 +429,212 @@ onUnmounted(() => {
       - 使用动态 class 控制显示/隐藏
       - hidden md:flex: 默认在移动端隐藏，桌面端显示 (除非 showSidebar 改变)
     -->
-    <Sidebar :class="{'hidden md:flex': !showSidebar, 'flex': showSidebar}" class="w-full md:w-80 shrink-0" />
+    <Sidebar 
+      :class="{'hidden md:flex': !showSidebar, 'flex': showSidebar}" 
+      class="w-full md:w-80 shrink-0"
+      :active-tab="activeTab"
+      @tab-change="handleTabChange"
+    />
 
-    <!-- 右侧主聊天区域 -->
+    <!-- 右侧主内容区域 -->
     <div class="flex-1 flex flex-col h-full relative bg-gray-50">
       
-      <!-- 
-        顶部标题栏 (Header)
-        - z-10: 确保阴影覆盖在内容之上
-      -->
-      <div class="h-16 px-6 bg-white border-b border-gray-100 flex items-center justify-between z-10">
-        <div class="flex items-center gap-4">
-          <!-- 移动端侧边栏切换按钮 -->
-          <button @click="toggleSidebar" class="p-2 text-gray-500 hover:bg-gray-100 rounded-lg md:hidden">
-            <i class="fas fa-bars"></i>
-          </button>
-          
-          <!-- AI 助手信息展示 -->
-          <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-              <i class="fas fa-robot text-lg"></i>
-            </div>
-            <div>
-              <h1 class="font-bold text-gray-900 text-lg leading-tight">{{ characterName }}</h1>
-              <div class="flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full" :class="isConnected ? 'bg-green-500' : 'bg-red-500'"></span>
-                <span class="text-xs text-gray-500">{{ isConnected ? 'Online' : 'Offline' }}</span>
-                <!-- 状态可视化标签 -->
-                <span v-if="backendState !== 'idle'" 
-                      class="ml-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full"
-                      :class="{
-                          'bg-yellow-100 text-yellow-700': backendState === 'thinking',
-                          'bg-green-100 text-green-700': backendState === 'speaking',
-                          'bg-red-100 text-red-700': backendState === 'interrupted'
-                      }">
-                    {{ backendState }}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- 右侧工具栏按钮 -->
-        <div class="flex items-center gap-3">
-          <!-- 语音模式开关 -->
-          <button 
-            @click="toggleVoiceMode" 
-            class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors border flex items-center gap-2"
-            :class="isVoiceMode ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-gray-50 text-gray-500 border-gray-200'"
-            title="Toggle Voice Output"
-          >
-            <i class="fas" :class="isVoiceMode ? 'fa-volume-up' : 'fa-volume-mute'"></i>
-            <span class="hidden md:inline">{{ isVoiceMode ? 'Voice On' : 'Voice Off' }}</span>
-          </button>
-
-          <!-- 主动热更新按钮 -->
-          <button 
-            @click="performHotReload"
-            :disabled="backendState === 'thinking' || backendState === 'speaking' || isTyping"
-            :class="{
-              'opacity-50 cursor-not-allowed': backendState === 'thinking' || backendState === 'speaking' || isTyping,
-              'hover:bg-green-100 hover:text-green-600': backendState === 'idle' && !isTyping
-            }"
-            class="w-9 h-9 flex items-center justify-center rounded-full text-gray-500 transition-colors border border-gray-200"
-            title="Hot Reload - 清空会话并重新开始（不包含历史总结）"
-          >
-            <i class="fas fa-sync"></i>
-          </button>
-
-          <button class="w-9 h-9 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 transition-colors">
-            <i class="fas fa-search"></i>
-          </button>
-          <button class="w-9 h-9 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 transition-colors">
-            <i class="fas fa-ellipsis-v"></i>
-          </button>
-        </div>
-      </div>
-
-      <!-- 
-        消息流区域 (Messages Area)
-        - flex-1: 占据剩余高度
-        - overflow-y-auto: 内容过多时滚动
-      -->
-      <div ref="chatContainer" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth">
-        <!-- 循环渲染消息气泡 -->
-        <MessageBubble 
-          v-for="msg in messages" 
-          :key="msg.id" 
-          :message="msg" 
-        />
-        
-        <!-- 正在输入提示 (Typing Indicator) -->
-        <div v-if="isTyping" class="flex justify-start animate-fade-in">
-          <div class="bg-white border border-gray-100 rounded-2xl rounded-tl-none py-3 px-4 shadow-sm flex items-center gap-1">
-            <!-- 三个跳动的圆点动画 -->
-            <div class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0s"></div>
-            <div class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
-            <div class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 
-        底部输入区域 (Input Area)
-        - border-t: 顶部边框
-      -->
-      <div class="p-4 md:p-6 bg-white border-t border-gray-100">
-        <div class="max-w-4xl mx-auto">
-          <!-- 快捷操作栏 (可选，目前注释掉) -->
-          <!-- <div class="flex gap-2 mb-3 overflow-x-auto pb-2 scrollbar-hide">...</div> -->
-
-          <!-- 输入框容器 -->
-          <div class="relative bg-gray-50 border border-gray-200 rounded-2xl p-2 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all shadow-sm">
-            <!-- 文本域: 支持多行输入 -->
-            <textarea 
-              v-model="userInput"
-              @keydown.enter.prevent="sendMessage"
-              placeholder="发送消息给 AI..." 
-              class="w-full bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[44px] py-2 px-3 text-gray-800 placeholder-gray-400"
-              rows="1"
-            ></textarea>
+      <!-- 聊天界面 -->
+      <div v-show="activeTab === 'chat'" class="flex-1 flex flex-col h-full">
+        <!-- 
+          顶部标题栏 (Header)
+          - z-10: 确保阴影覆盖在内容之上
+        -->
+        <div class="h-16 px-6 bg-white border-b border-gray-100 flex items-center justify-between z-10">
+          <div class="flex items-center gap-4">
+            <!-- 移动端侧边栏切换按钮 -->
+            <button @click="toggleSidebar" class="p-2 text-gray-500 hover:bg-gray-100 rounded-lg md:hidden">
+              <i class="fas fa-bars"></i>
+            </button>
             
-            <!-- 底部工具栏与发送按钮 -->
-            <div class="flex items-center justify-between px-2 pb-1">
-              <div class="flex items-center gap-2">
-                 <!-- 多媒体按钮组 -->
-                 <button class="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-colors" title="Upload Image">
-                  <i class="fas fa-image"></i>
-                </button>
-                <button 
-                  @click="toggleRecording"
-                  class="p-2 rounded-full transition-colors relative"
-                  :class="isRecording ? 'text-red-500 bg-red-50' : 'text-gray-400 hover:text-green-500 hover:bg-green-50'"
-                  title="Voice Input"
-                >
-                  <i class="fas" :class="isRecording ? 'fa-stop' : 'fa-microphone'"></i>
-                  <span v-if="isRecording" class="absolute inset-0 rounded-full border border-red-400 opacity-75 animate-ping"></span>
-                </button>
-                <button class="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-full transition-colors" title="Attach File">
-                  <i class="fas fa-paperclip"></i>
-                </button>
+            <!-- AI 助手信息展示 -->
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                <i class="fas fa-robot text-lg"></i>
               </div>
-              
-              <!-- 发送按钮与停止按钮 -->
-              <div class="flex items-center gap-2">
-                <!-- 停止按钮 (仅在非空闲状态下显示) -->
-                <button 
-                  v-if="backendState === 'speaking' || backendState === 'thinking' || isTyping"
-                  @click="stopInteraction"
-                  class="w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 shadow-md bg-red-50 text-red-500 hover:bg-red-500 hover:text-white border border-red-200 animate-pulse"
-                  title="Stop / Interrupt"
-                >
-                  <i class="fas fa-stop text-sm"></i>
-                </button>
-
-                <!-- 发送按钮 -->
-                <button 
-                  @click="sendMessage"
-                  :disabled="!userInput.trim() || !isConnected"
-                  :class="{'opacity-50 cursor-not-allowed': !userInput.trim() || !isConnected, 'hover:bg-blue-600 hover:shadow-lg': userInput.trim() && isConnected}"
-                  class="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 shadow-md"
-                >
-                  <i class="fas fa-paper-plane text-sm"></i>
-                </button>
+              <div>
+                <h1 class="font-bold text-gray-900 text-lg leading-tight">{{ characterName }}</h1>
+                <div class="flex items-center gap-2">
+                  <span class="w-2 h-2 rounded-full" :class="isConnected ? 'bg-green-500' : 'bg-red-500'"></span>
+                  <span class="text-xs text-gray-500">{{ isConnected ? 'Online' : 'Offline' }}</span>
+                  <!-- 状态可视化标签 -->
+                  <span v-if="backendState !== 'idle'" 
+                        class="ml-2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full"
+                        :class="{
+                            'bg-yellow-100 text-yellow-700': backendState === 'thinking',
+                            'bg-green-100 text-green-700': backendState === 'speaking',
+                            'bg-red-100 text-red-700': backendState === 'interrupted'
+                        }">
+                      {{ backendState }}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
           
-          <!-- 免责声明 -->
-          <div class="text-center mt-3">
-            <p class="text-xs text-gray-400">AI output may be inaccurate. Please verify important information.</p>
+          <!-- 右侧工具栏按钮 -->
+          <div class="flex items-center gap-3">
+            <!-- 语音模式开关 -->
+            <button 
+              @click="toggleVoiceMode" 
+              class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors border flex items-center gap-2"
+              :class="isVoiceMode ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-gray-50 text-gray-500 border-gray-200'"
+              title="Toggle Voice Output"
+            >
+              <i class="fas" :class="isVoiceMode ? 'fa-volume-up' : 'fa-volume-mute'"></i>
+              <span class="hidden md:inline">{{ isVoiceMode ? 'Voice On' : 'Voice Off' }}</span>
+            </button>
+
+            <!-- 主动热更新按钮 -->
+            <button 
+              @click="performHotReload"
+              :disabled="backendState === 'thinking' || backendState === 'speaking' || isTyping"
+              :class="{
+                'opacity-50 cursor-not-allowed': backendState === 'thinking' || backendState === 'speaking' || isTyping,
+                'hover:bg-green-100 hover:text-green-600': backendState === 'idle' && !isTyping
+              }"
+              class="w-9 h-9 flex items-center justify-center rounded-full text-gray-500 transition-colors border border-gray-200"
+              title="Hot Reload - 清空会话并重新开始（不包含历史总结）"
+            >
+              <i class="fas fa-sync"></i>
+            </button>
+
+            <button class="w-9 h-9 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 transition-colors">
+              <i class="fas fa-search"></i>
+            </button>
+            <button class="w-9 h-9 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 transition-colors">
+              <i class="fas fa-ellipsis-v"></i>
+            </button>
           </div>
+        </div>
+
+        <!-- 
+          消息流区域 (Messages Area)
+          - flex-1: 占据剩余高度
+          - overflow-y-auto: 内容过多时滚动
+        -->
+        <div ref="chatContainer" class="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth">
+          <!-- 循环渲染消息气泡 -->
+          <MessageBubble 
+            v-for="msg in messages" 
+            :key="msg.id" 
+            :message="msg" 
+          />
+          
+          <!-- 正在输入提示 (Typing Indicator) -->
+          <div v-if="isTyping" class="flex justify-start animate-fade-in">
+            <div class="bg-white border border-gray-100 rounded-2xl rounded-tl-none py-3 px-4 shadow-sm flex items-center gap-1">
+              <!-- 三个跳动的圆点动画 -->
+              <div class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0s"></div>
+              <div class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+              <div class="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 
+          底部输入区域 (Input Area)
+          - border-t: 顶部边框
+        -->
+        <div class="p-4 md:p-6 bg-white border-t border-gray-100">
+          <div class="max-w-4xl mx-auto">
+            <!-- 快捷操作栏 (可选，目前注释掉) -->
+            <!-- <div class="flex gap-2 mb-3 overflow-x-auto pb-2 scrollbar-hide">...</div> -->
+
+            <!-- 输入框容器 -->
+            <div class="relative bg-gray-50 border border-gray-200 rounded-2xl p-2 focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all shadow-sm">
+              <!-- 文本域: 支持多行输入 -->
+              <textarea 
+                v-model="userInput"
+                @keydown.enter.prevent="sendMessage"
+                placeholder="发送消息给 AI..." 
+                class="w-full bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[44px] py-2 px-3 text-gray-800 placeholder-gray-400"
+                rows="1"
+              ></textarea>
+              
+              <!-- 底部工具栏与发送按钮 -->
+              <div class="flex items-center justify-between px-2 pb-1">
+                <div class="flex items-center gap-2">
+                   <!-- 多媒体按钮组 -->
+                   <button class="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-colors" title="Upload Image">
+                    <i class="fas fa-image"></i>
+                  </button>
+                  <button 
+                    @click="toggleRecording"
+                    class="p-2 rounded-full transition-colors relative"
+                    :class="isRecording ? 'text-red-500 bg-red-50' : 'text-gray-400 hover:text-green-500 hover:bg-green-50'"
+                    title="Voice Input"
+                  >
+                    <i class="fas" :class="isRecording ? 'fa-stop' : 'fa-microphone'"></i>
+                    <span v-if="isRecording" class="absolute inset-0 rounded-full border border-red-400 opacity-75 animate-ping"></span>
+                  </button>
+                  <button class="p-2 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded-full transition-colors" title="Attach File">
+                    <i class="fas fa-paperclip"></i>
+                  </button>
+                </div>
+                
+                <!-- 发送按钮与停止按钮 -->
+                <div class="flex items-center gap-2">
+                  <!-- 停止按钮 (仅在非空闲状态下显示) -->
+                  <button 
+                    v-if="backendState === 'speaking' || backendState === 'thinking' || isTyping"
+                    @click="stopInteraction"
+                    class="w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 shadow-md bg-red-50 text-red-500 hover:bg-red-500 hover:text-white border border-red-200 animate-pulse"
+                    title="Stop / Interrupt"
+                  >
+                    <i class="fas fa-stop text-sm"></i>
+                  </button>
+
+                  <!-- 发送按钮 -->
+                  <button 
+                    @click="sendMessage"
+                    :disabled="!userInput.trim() || !isConnected"
+                    :class="{'opacity-50 cursor-not-allowed': !userInput.trim() || !isConnected, 'hover:bg-blue-600 hover:shadow-lg': userInput.trim() && isConnected}"
+                    class="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 shadow-md"
+                  >
+                    <i class="fas fa-paper-plane text-sm"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 免责声明 -->
+            <div class="text-center mt-3">
+              <p class="text-xs text-gray-400">AI output may be inaccurate. Please verify important information.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 历史界面 -->
+      <div v-show="activeTab === 'history'" class="flex-1 flex items-center justify-center bg-white">
+        <div class="text-center text-gray-400">
+          <i class="fas fa-history text-6xl mb-4"></i>
+          <p class="text-xl font-medium">历史记录</p>
+          <p class="text-sm mt-2">此功能尚未实现</p>
+        </div>
+      </div>
+
+      <!-- 配置界面 -->
+      <div v-show="activeTab === 'settings'" class="flex-1 flex items-center justify-center bg-white">
+        <div class="text-center text-gray-400">
+          <i class="fas fa-cog text-6xl mb-4"></i>
+          <p class="text-xl font-medium">系统配置</p>
+          <p class="text-sm mt-2">此功能尚未实现</p>
+        </div>
+      </div>
+
+      <!-- 日志界面 -->
+      <div v-show="activeTab === 'logs'" class="flex-1 flex items-center justify-center bg-white">
+        <div class="text-center text-gray-400">
+          <i class="fas fa-file-alt text-6xl mb-4"></i>
+          <p class="text-xl font-medium">系统日志</p>
+          <p class="text-sm mt-2">此功能尚未实现</p>
         </div>
       </div>
     </div>
