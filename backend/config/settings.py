@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Type, Tuple
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource
-from .migration import migration
 
 # =============================================================================
 # 子配置模型
@@ -96,8 +95,9 @@ class JsonConfigSettingsSource(PydanticBaseSettingsSource):
         self.config_data = self._load_json_config()
 
     def _load_json_config(self) -> Dict[str, Any]:
-        # 使用 migration 模块找到配置文件路径
-        config_path = migration.get_config_path('core_config.json')
+        # 使用 paths 模块找到配置文件路径
+        from . import paths
+        config_path = paths.CONFIG_DIR / 'core_config.json'
         if config_path.exists():
             try:
                 with open(config_path, 'r', encoding='utf-8') as f:
@@ -180,10 +180,7 @@ class Settings(BaseSettings):
 
 def load_settings() -> Settings:
     """加载配置单例"""
-    # 1. 确保目录结构和配置文件存在
-    migration.migrate_all()
-    
-    # 2. 实例化 Settings (会自动加载 JSON 和 ENV)
+    # 实例化 Settings (会自动加载 JSON 和 ENV)
     return Settings()
 
 # 全局单例

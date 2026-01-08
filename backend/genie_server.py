@@ -199,9 +199,10 @@ def start_genie_tts_server(
 
 if __name__ == "__main__":
     # 配置日志（中央队列 + loguru + Genie 专用日志文件）
+    from backend.config import paths
     init_logging(
         log_level="INFO",
-        log_file="logs/genie.log",
+        log_file=str(paths.LOGS_DIR / "genie.log"),
         rotation="10 MB",
         retention="7 days",
     )
@@ -209,15 +210,14 @@ if __name__ == "__main__":
     # 读取默认配置（用于帮助信息）
     default_host = "127.0.0.1"
     default_port = 8001
-    default_data_dir = "backend/config/tts/GenieData"
     
     try:
-        from backend.config import settings
+        from backend.config import settings, paths
         default_host = settings.tts.server.host
         default_port = settings.tts.server.port
-        default_data_dir = settings.tts.genie_data_dir or default_data_dir
+        default_data_dir = settings.tts.genie_data_dir or str(paths.TTS_DIR / "GenieData")
     except Exception:
-        pass  # 忽略配置加载错误，使用硬编码默认值
+        default_data_dir = "backend/data/tts/GenieData"  # fallback
     
     # 解析命令行参数
     parser = argparse.ArgumentParser(

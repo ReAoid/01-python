@@ -14,7 +14,7 @@ import json
 from collections import defaultdict
 import logging
 
-from backend.config import migration
+from backend.config import paths
 from .memory_item import MemoryItem
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ class MemoryGraph:
     
     def __init__(self, storage_dir: Path = None):
         if storage_dir is None:
-            storage_dir = migration.user_memory_dir
+            storage_dir = paths.MEMORY_DIR
         
         self.storage_path = storage_dir / "memory_graph.json"
         

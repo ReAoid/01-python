@@ -205,9 +205,6 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Genie TTS Models (Large files, should be stored elsewhere)
-backend/config/tts/
-
 # Config files (may contain sensitive data)
 backend/config/core_config.json
 
@@ -215,3 +212,6 @@ backend/config/core_config.json
 node_modules/
 dist/
 .DS_Store
+
+# Runtime Data (All data now in backend/data/)
+backend/data/

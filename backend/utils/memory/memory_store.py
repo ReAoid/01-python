@@ -17,7 +17,7 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 import logging
 
-from backend.config import migration
+from backend.config import paths
 from .memory_item import MemoryItem, MemoryType, SessionSummary
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ class SessionSummaryStore(BaseMemoryStore):
     
     def __init__(self, storage_dir: Path = None):
         if storage_dir is None:
-            storage_dir = migration.user_memory_dir
+            storage_dir = paths.MEMORY_DIR
         
         # 保存 storage_dir 供外部访问
         self.storage_dir = storage_dir
@@ -161,7 +161,7 @@ class MemoryItemStore(BaseMemoryStore):
         embedding_func: Optional[Callable[[str], List[float]]] = None
     ):
         if storage_dir is None:
-            storage_dir = migration.user_memory_dir
+            storage_dir = paths.MEMORY_DIR
         
         # 保存 storage_dir 供外部访问
         self.storage_dir = storage_dir

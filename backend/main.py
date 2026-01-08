@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from backend.config import settings
+from backend.config import settings, paths
 from backend.core.event_bus import event_bus, EventType
 from backend.services.memory_service import MemoryService
 from backend.services.task_service import TaskService
@@ -25,7 +25,7 @@ from backend.services.self_awareness_service import SelfAwarenessService
 # 初始化统一日志系统（中央队列 + loguru）
 init_logging(
     log_level=settings.system.log_level,
-    log_file="logs/backend.log",  # 后端总日志文件
+    log_file=str(paths.LOGS_DIR / "backend.log"),  # 后端总日志文件
     rotation="10 MB",
     retention="7 days",
 )

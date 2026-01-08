@@ -21,7 +21,7 @@ from datetime import datetime, timezone, timedelta
 from backend.core.message import Message
 from backend.core.llm import Llm
 from backend.utils.openai_llm import OpenaiLlm
-from backend.config import settings, migration
+from backend.config import settings, paths
 
 from .short_term import ShortTermMemory
 from .memory_item import MemoryItem, SessionSummary
@@ -85,7 +85,7 @@ class MemoryManager:
         if storage_dir:
             self.storage_dir = storage_dir
         else:
-            self.storage_dir = migration.user_memory_dir
+            self.storage_dir = paths.MEMORY_DIR
         
         # 确保目录存在
         os.makedirs(self.storage_dir, exist_ok=True)

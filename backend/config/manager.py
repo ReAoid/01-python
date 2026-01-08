@@ -3,7 +3,7 @@ from typing import Dict, Any, Tuple
 from pathlib import Path
 
 from .settings import settings
-from .migration import migration
+from . import paths
 
 class ConfigManager:
     """
@@ -22,24 +22,24 @@ class ConfigManager:
 
     @property
     def project_root(self) -> Path:
-        return migration.project_root
+        return paths.PROJECT_ROOT
 
     def get_config_path(self, filename: str) -> Path:
         """获取配置文件路径"""
-        return migration.get_config_path(filename)
+        return paths.CONFIG_DIR / filename
         
     def get_memory_path(self, filename: str) -> Path:
         """获取记忆文件路径"""
-        return migration.user_memory_dir / filename
+        return paths.MEMORY_DIR / filename
     
     def get_tts_base_dir(self) -> Path:
-        """获取 TTS 基础目录 (使用项目目录)"""
-        return migration.project_tts_dir
+        """获取 TTS 基础目录"""
+        return paths.TTS_DIR
     
     def ensure_live2d_directory(self) -> bool:
         """确保 Live2D 目录存在"""
         try:
-            migration.live2d_dir.mkdir(parents=True, exist_ok=True)
+            paths.LIVE2D_DIR.mkdir(parents=True, exist_ok=True)
             return True
         except Exception as e:
             print(f"Error creating live2d directory: {e}")
