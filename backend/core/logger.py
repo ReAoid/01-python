@@ -6,10 +6,12 @@
 import logging
 import logging.handlers
 import sys
+import asyncio
 from pathlib import Path
 from queue import Queue
 from threading import Lock
 from typing import Optional
+from datetime import datetime
 
 from loguru import logger as loguru_logger
 
@@ -55,6 +57,57 @@ class LoguruHandler(logging.Handler):
             ).log(level, record.getMessage())
         except Exception:
             self.handleError(record)
+
+
+class WebSocketLogHandler(logging.Handler):
+    """
+    将日志通过事件总线推送到前端 WebSocket。
+    只推送 INFO 及以上级别的日志，避免前端被 DEBUG 信息洪水。
+    """
+    
+    def __init__(self, level=logging.INFO):
+        super().__init__(level)
+        # 延迟导入避免循环依赖
+        self._event_bus = None
+    
+    @property
+    def event_bus(self):
+        if self._event_bus is None:
+            from backend.core.event_bus import event_bus, EventType
+            self._event_bus = event_bus
+            self._EventType = EventType
+        return self._event_bus
+    
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            # 只推送 INFO 及以上级别
+            if record.levelno < logging.INFO:
+                return
+            
+            # 构造日志条目
+            log_entry = {
+                'level': record.levelname,
+                'timestamp': datetime.now().isoformat(),
+                'module': record.name,
+                'function': record.funcName,
+                'line': record.lineno,
+                'message': record.getMessage(),
+                'trace': self.format(record) if record.exc_info else None
+            }
+            
+            # 通过事件总线异步推送
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.create_task(
+                        self.event_bus.publish(self._EventType.LOG_ENTRY, log_entry)
+                    )
+            except RuntimeError:
+                # 如果没有运行中的事件循环，忽略
+                pass
+        except Exception:
+            # 静默失败，不影响主日志系统
+            pass
 
 
 def _configure_loguru_sinks(
@@ -137,7 +190,7 @@ def init_logging(
         )
         _queue_listener.start()
 
-        # 配置 root logger：仅挂 QueueHandler
+        # 配置 root logger：同时挂载 QueueHandler 和 WebSocketLogHandler
         root_logger = logging.getLogger()
         root_logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
 
@@ -146,6 +199,10 @@ def init_logging(
 
         queue_handler = logging.handlers.QueueHandler(_log_queue)
         root_logger.addHandler(queue_handler)
+        
+        # 添加 WebSocket 日志推送 handler
+        ws_handler = WebSocketLogHandler(level=logging.INFO)
+        root_logger.addHandler(ws_handler)
 
 
 def shutdown_logging() -> None:

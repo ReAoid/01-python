@@ -11,7 +11,7 @@
  * 4. 响应式侧边栏 (Responsive Sidebar): 在移动端支持抽屉式切换。
  */
 
-import { ref, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import MessageBubble from './MessageBubble.vue'
 import Sidebar from './Sidebar.vue'
 import { AudioManager } from '../utils/audio.js'
@@ -83,8 +83,160 @@ const quickActions = [
 ]
 
 // =========================================================================
+// 日志系统状态 (Log System State)
+// =========================================================================
+
+// 日志级别配置
+const LOG_LEVELS = {
+  DEBUG: { label: 'DEBUG', color: 'text-gray-500', bg: 'bg-gray-50', icon: 'fa-bug' },
+  INFO: { label: 'INFO', color: 'text-blue-600', bg: 'bg-blue-50', icon: 'fa-info-circle' },
+  SUCCESS: { label: 'SUCCESS', color: 'text-green-600', bg: 'bg-green-50', icon: 'fa-check-circle' },
+  WARNING: { label: 'WARNING', color: 'text-yellow-600', bg: 'bg-yellow-50', icon: 'fa-exclamation-triangle' },
+  ERROR: { label: 'ERROR', color: 'text-red-600', bg: 'bg-red-50', icon: 'fa-times-circle' }
+}
+
+// 日志存储 (环形缓冲区，最多1000条)
+const logs = ref([])
+const MAX_LOGS = 1000
+
+// 日志过滤状态
+const logFilters = ref({
+  levels: ['INFO', 'SUCCESS', 'WARNING', 'ERROR'], // 默认不显示 DEBUG
+  search: ''
+})
+
+// 日志控制状态
+const logPaused = ref(false)
+const showLevelFilter = ref(false)
+const logContainer = ref(null)
+const isLogScrollAtBottom = ref(true)
+
+// 日志统计
+const logStats = computed(() => ({
+  total: logs.value.length,
+  error: logs.value.filter(l => l.level === 'ERROR').length,
+  warning: logs.value.filter(l => l.level === 'WARNING').length,
+  info: logs.value.filter(l => l.level === 'INFO' || l.level === 'SUCCESS').length
+}))
+
+// 过滤后的日志
+const filteredLogs = computed(() => {
+  return logs.value.filter(log => {
+    // 级别过滤
+    if (!logFilters.value.levels.includes(log.level)) return false
+    
+    // 搜索关键词
+    if (logFilters.value.search) {
+      const searchLower = logFilters.value.search.toLowerCase()
+      return (
+        log.message?.toLowerCase().includes(searchLower) ||
+        log.module?.toLowerCase().includes(searchLower) ||
+        log.function?.toLowerCase().includes(searchLower)
+      )
+    }
+    
+    return true
+  })
+})
+
+// =========================================================================
 // 2. 核心逻辑方法 (Core Methods)
 // =========================================================================
+
+/**
+ * 日志系统功能 (Log System Functions)
+ */
+
+// 添加日志条目
+const addLog = (entry) => {
+  if (logPaused.value) return
+  
+  logs.value.push({
+    id: Date.now() + Math.random(),
+    timestamp: new Date(),
+    source: 'backend',
+    ...entry
+  })
+  
+  // 环形缓冲区：超过1000条删除最旧的
+  if (logs.value.length > MAX_LOGS) {
+    logs.value.shift()
+  }
+  
+  // 自动滚动到最新（如果在底部）
+  nextTick(() => {
+    if (isLogScrollAtBottom.value && logContainer.value) {
+      scrollLogToBottom()
+    }
+  })
+}
+
+// 滚动日志到底部
+const scrollLogToBottom = () => {
+  if (logContainer.value) {
+    logContainer.value.scrollTop = logContainer.value.scrollHeight
+  }
+}
+
+// 监听日志容器滚动，判断是否在底部
+const handleLogScroll = () => {
+  if (logContainer.value) {
+    const { scrollTop, scrollHeight, clientHeight } = logContainer.value
+    isLogScrollAtBottom.value = scrollHeight - scrollTop - clientHeight < 50
+  }
+}
+
+// 切换级别过滤
+const toggleLevelFilter = (level) => {
+  const index = logFilters.value.levels.indexOf(level)
+  if (index > -1) {
+    logFilters.value.levels.splice(index, 1)
+  } else {
+    logFilters.value.levels.push(level)
+  }
+}
+
+// 清空日志
+const clearLogs = () => {
+  if (confirm('确定要清空所有日志吗？')) {
+    logs.value = []
+  }
+}
+
+// 导出日志
+const exportLogs = () => {
+  const data = filteredLogs.value.map(log => ({
+    时间: formatLogTime(log.timestamp, 'full'),
+    级别: log.level,
+    模块: log.module || '',
+    函数: log.function || '',
+    行号: log.line || '',
+    消息: log.message,
+    堆栈: log.trace || ''
+  }))
+  
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `logs_${new Date().toISOString().replace(/[:.]/g, '-')}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+// 格式化日志时间
+const formatLogTime = (timestamp, format = 'short') => {
+  const date = new Date(timestamp)
+  if (format === 'full') {
+    return date.toISOString()
+  }
+  return date.toLocaleTimeString('zh-CN', { 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    second: '2-digit',
+    hour12: false 
+  })
+}
 
 /**
  * 发送配置到后端
@@ -336,6 +488,11 @@ const handleSocketMessage = async (message) => {
       // 如果状态变为 idle 或 interrupted，停止 typing 动画
       if (message.state === 'idle' || message.state === 'interrupted') {
           isTyping.value = false;
+      }
+  } else if (message.type === 'log_entry') {
+      // 处理后端日志推送
+      if (!logPaused.value) {
+        addLog(message.data);
       }
   }
 };
@@ -630,11 +787,145 @@ onUnmounted(() => {
       </div>
 
       <!-- 日志界面 -->
-      <div v-show="activeTab === 'logs'" class="flex-1 flex items-center justify-center bg-white">
-        <div class="text-center text-gray-400">
-          <i class="fas fa-file-alt text-6xl mb-4"></i>
-          <p class="text-xl font-medium">系统日志</p>
-          <p class="text-sm mt-2">此功能尚未实现</p>
+      <div v-show="activeTab === 'logs'" class="flex-1 flex flex-col h-full bg-gray-50">
+        <!-- 顶部工具栏 -->
+        <div class="h-16 px-6 bg-white border-b border-gray-200 flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-4">
+            <h2 class="font-bold text-gray-900 text-lg">系统日志</h2>
+            <div class="flex items-center gap-2 text-sm">
+              <span class="px-2 py-1 rounded-full bg-red-50 text-red-600 text-xs font-medium">
+                <i class="fas fa-times-circle mr-1"></i>{{ logStats.error }}
+              </span>
+              <span class="px-2 py-1 rounded-full bg-yellow-50 text-yellow-600 text-xs font-medium">
+                <i class="fas fa-exclamation-triangle mr-1"></i>{{ logStats.warning }}
+              </span>
+              <span class="px-2 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-medium">
+                <i class="fas fa-info-circle mr-1"></i>{{ logStats.info }}
+              </span>
+            </div>
+          </div>
+          
+          <div class="flex items-center gap-3">
+            <!-- 搜索框 -->
+            <div class="relative">
+              <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+              <input 
+                v-model="logFilters.search"
+                type="text"
+                placeholder="搜索日志..."
+                class="pl-9 pr-4 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48"
+              />
+            </div>
+            
+            <!-- 级别过滤下拉菜单 -->
+            <div class="relative">
+              <button 
+                @click="showLevelFilter = !showLevelFilter"
+                class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2"
+              >
+                <i class="fas fa-filter"></i>
+                <span>级别</span>
+                <i class="fas fa-chevron-down text-xs"></i>
+              </button>
+              
+              <!-- 下拉面板 -->
+              <div v-if="showLevelFilter" class="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-10 min-w-[160px]">
+                <div v-for="(config, level) in LOG_LEVELS" :key="level" class="flex items-center gap-2 p-2 hover:bg-gray-50 rounded cursor-pointer">
+                  <input 
+                    type="checkbox" 
+                    :checked="logFilters.levels.includes(level)"
+                    @change="toggleLevelFilter(level)"
+                    class="rounded text-blue-500"
+                  />
+                  <i class="fas text-sm" :class="[config.icon, config.color]"></i>
+                  <span class="text-sm">{{ config.label }}</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 清空日志 -->
+            <button 
+              @click="clearLogs"
+              class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-colors"
+            >
+              <i class="fas fa-trash mr-1"></i>清空
+            </button>
+            
+            <!-- 导出日志 -->
+            <button 
+              @click="exportLogs"
+              class="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors"
+            >
+              <i class="fas fa-download mr-1"></i>导出
+            </button>
+            
+            <!-- 暂停/继续 -->
+            <button 
+              @click="logPaused = !logPaused"
+              class="w-9 h-9 rounded-full flex items-center justify-center border border-gray-300 hover:bg-gray-50 transition-colors"
+              :class="logPaused ? 'bg-yellow-50 border-yellow-300 text-yellow-600' : 'text-gray-600'"
+              :title="logPaused ? '继续日志' : '暂停日志'"
+            >
+              <i class="fas text-sm" :class="logPaused ? 'fa-play' : 'fa-pause'"></i>
+            </button>
+          </div>
+        </div>
+        
+        <!-- 日志列表主体 -->
+        <div 
+          ref="logContainer" 
+          @scroll="handleLogScroll"
+          class="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-xs"
+        >
+          <div 
+            v-for="log in filteredLogs" 
+            :key="log.id"
+            class="flex items-start gap-3 p-3 bg-white border border-gray-200 rounded-lg hover:shadow-sm transition-shadow"
+            :class="LOG_LEVELS[log.level]?.bg"
+          >
+            <!-- 左侧时间 & 级别 -->
+            <div class="shrink-0 w-24">
+              <div class="text-gray-500 text-[10px] mb-1">{{ formatLogTime(log.timestamp) }}</div>
+              <div class="flex items-center gap-1" :class="LOG_LEVELS[log.level]?.color">
+                <i class="fas text-xs" :class="LOG_LEVELS[log.level]?.icon"></i>
+                <span class="font-bold text-[10px]">{{ log.level }}</span>
+              </div>
+            </div>
+            
+            <!-- 中间内容 -->
+            <div class="flex-1 min-w-0">
+              <div class="text-gray-600 mb-1 text-[11px]">
+                <span class="font-semibold">{{ log.module || 'system' }}</span>
+                <span v-if="log.function" class="text-gray-400"> :: {{ log.function }}:{{ log.line }}</span>
+              </div>
+              <div class="text-gray-900 break-words text-xs leading-relaxed">{{ log.message }}</div>
+              
+              <!-- 堆栈追踪 -->
+              <div v-if="log.trace" class="mt-2 p-2 bg-gray-100 rounded text-[9px] overflow-x-auto max-h-32 overflow-y-auto">
+                <pre class="whitespace-pre-wrap text-gray-700">{{ log.trace }}</pre>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 空状态 -->
+          <div v-if="filteredLogs.length === 0" class="flex flex-col items-center justify-center h-full text-gray-400 py-20">
+            <i class="fas fa-inbox text-5xl mb-4"></i>
+            <p class="text-lg font-medium">暂无日志</p>
+            <p class="text-sm mt-2">{{ logs.length > 0 ? '当前过滤条件没有匹配的日志' : '等待系统生成日志...' }}</p>
+          </div>
+        </div>
+        
+        <!-- 底部状态栏 -->
+        <div class="h-10 px-6 bg-white border-t border-gray-200 flex items-center justify-between text-xs text-gray-500 shrink-0">
+          <div class="flex items-center gap-4">
+            <span>显示 {{ filteredLogs.length }} / {{ logs.length }} 条日志</span>
+            <span v-if="logPaused" class="text-yellow-600 font-medium">
+              <i class="fas fa-pause-circle mr-1"></i>已暂停
+            </span>
+          </div>
+          <div class="text-gray-400">
+            <i class="fas fa-info-circle mr-1"></i>环形缓冲区最多保留 {{ MAX_LOGS }} 条
+          </div>
         </div>
       </div>
     </div>

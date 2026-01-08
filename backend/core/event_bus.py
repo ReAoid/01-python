@@ -22,6 +22,9 @@ class EventType(str, Enum):
     # 任务事件
     TASK_DETECTED = "task.detected"      # 检测到潜在任务
     TASK_COMPLETED = "task.completed"    # 任务执行完成
+    
+    # 日志事件
+    LOG_ENTRY = "log.entry"              # 日志条目（用于前端展示）
 
 @dataclass
 class Event:

@@ -120,6 +120,7 @@ class SessionManager:
         # 订阅系统通知
         event_bus.subscribe(EventType.TASK_COMPLETED, self._on_task_completed)
         event_bus.subscribe(EventType.MEMORY_UPDATED, self._on_memory_updated)
+        event_bus.subscribe(EventType.LOG_ENTRY, self._on_log_entry)
 
     async def _on_task_completed(self, event: Event):
         """处理任务完成通知。"""
@@ -139,6 +140,24 @@ class SessionManager:
         
         if source == "self_awareness" and content:
             await self._send_text_to_frontend(f"【AI 自我思考】 {content}")
+
+    async def _on_log_entry(self, event: Event):
+        """
+        处理日志条目，转发到前端 WebSocket。
+        只在 WebSocket 连接正常时推送。
+        """
+        if not self.websocket:
+            return
+        
+        try:
+            # 直接转发日志数据
+            await self.websocket.send_text(json.dumps({
+                'type': 'log_entry',
+                'data': event.data
+            }))
+        except Exception as e:
+            # 静默失败，不影响主流程
+            logger.debug(f"Failed to send log to frontend: {e}")
 
     # =========================================================================
     # 1. 生命周期与管道启动
