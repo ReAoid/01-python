@@ -1,5 +1,6 @@
 import sys
 import logging
+import json
 from pathlib import Path
 import asyncio
 from contextlib import asynccontextmanager
@@ -126,6 +127,139 @@ async def get_page_config():
         "character_name": char_name,
         "model_path": f"/static/live2d/{char_name}/{char_name}.model3.json"
     })
+
+
+# ============================================================================
+# 历史记录 API 路由
+# ============================================================================
+
+@app.get("/api/history/sessions")
+async def get_history_sessions(count: int = 10):
+    """
+    获取最近的对话会话列表
+    
+    Args:
+        count: 返回数量，默认10条
+    
+    Returns:
+        会话列表，包含 session_id, summary, key_points, message_count, created_at, has_raw_conversation
+    """
+    try:
+        memory_service = app.state.memory_service
+        if not memory_service:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Memory service not available"}
+            )
+        
+        # 获取最近的会话总结
+        summaries = memory_service.memory_manager.get_recent_summaries(count)
+        
+        # 检查是否存在原始对话文件
+        sessions_dir = memory_service.memory_manager.structurer.sessions_dir
+        
+        result = []
+        for summary in summaries:
+            session_file = sessions_dir / f"{summary.session_id}.json"
+            result.append({
+                "session_id": summary.session_id,
+                "summary": summary.summary,
+                "key_points": summary.key_points,
+                "message_count": summary.message_count,
+                "created_at": summary.created_at.isoformat(),
+                "has_raw_conversation": session_file.exists()
+            })
+        
+        return JSONResponse(content=result)
+        
+    except Exception as e:
+        logger.error(f"获取历史会话失败: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to get history: {str(e)}"}
+        )
+
+
+@app.get("/api/history/session/{session_id}")
+async def get_session_detail(session_id: str):
+    """
+    获取指定会话的完整原始对话记录
+    
+    Args:
+        session_id: 会话ID（如 session_2026-01-08_15-23-36）
+    
+    Returns:
+        完整的会话对话记录，包含 session_id, timestamp, message_count, messages
+    """
+    try:
+        memory_service = app.state.memory_service
+        if not memory_service:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Memory service not available"}
+            )
+        
+        # 读取原始对话文件
+        sessions_dir = memory_service.memory_manager.structurer.sessions_dir
+        session_file = sessions_dir / f"{session_id}.json"
+        
+        if not session_file.exists():
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"Session {session_id} not found"}
+            )
+        
+        # 加载并返回原始对话
+        with open(session_file, 'r', encoding='utf-8') as f:
+            conversation_data = json.load(f)
+        
+        return JSONResponse(content=conversation_data)
+        
+    except Exception as e:
+        logger.error(f"获取会话详情失败: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to get session detail: {str(e)}"}
+        )
+
+
+@app.get("/api/history/statistics")
+async def get_history_statistics():
+    """
+    获取历史记录统计信息
+    
+    Returns:
+        统计数据，包含总会话数、总记忆项数、按类型分布等
+    """
+    try:
+        memory_service = app.state.memory_service
+        if not memory_service:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "Memory service not available"}
+            )
+        
+        # 获取统计信息
+        stats = memory_service.memory_manager.get_statistics()
+        
+        # 构造前端友好的统计数据
+        result = {
+            "total_sessions": stats["summaries"]["total"],
+            "unstructured_sessions": stats["summaries"]["unstructured"],
+            "total_memory_items": stats["memory_items"]["total_items"],
+            "memory_types": stats["memory_items"].get("type_distribution", {}),
+            "categories": stats["memory_items"].get("category_distribution", {}),
+            "short_term_messages": stats["short_term"]["message_count"]
+        }
+        
+        return JSONResponse(content=result)
+        
+    except Exception as e:
+        logger.error(f"获取统计信息失败: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to get statistics: {str(e)}"}
+        )
 
 
 @app.websocket("/ws/chat")

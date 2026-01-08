@@ -140,6 +140,29 @@ const filteredLogs = computed(() => {
 })
 
 // =========================================================================
+// 历史记忆系统状态 (History System State)
+// =========================================================================
+
+// 会话列表
+const historySessions = ref([])
+const selectedSession = ref(null)
+const sessionDetail = ref(null)
+
+// 统计信息
+const historyStats = ref({
+  total_sessions: 0,
+  total_memory_items: 0,
+  memory_types: {}
+})
+
+// 加载状态
+const isLoadingHistory = ref(false)
+const isLoadingDetail = ref(false)
+
+// 展开状态（用于控制会话详情的展开/折叠）
+const expandedSessionId = ref(null)
+
+// =========================================================================
 // 2. 核心逻辑方法 (Core Methods)
 // =========================================================================
 
@@ -224,7 +247,9 @@ const exportLogs = () => {
   URL.revokeObjectURL(url)
 }
 
-// 格式化日志时间
+/**
+ * 格式化日志时间
+ */
 const formatLogTime = (timestamp, format = 'short') => {
   const date = new Date(timestamp)
   if (format === 'full') {
@@ -235,6 +260,150 @@ const formatLogTime = (timestamp, format = 'short') => {
     minute: '2-digit', 
     second: '2-digit',
     hour12: false 
+  })
+}
+
+/**
+ * 历史记录功能方法 (History Methods)
+ */
+
+/**
+ * 加载历史会话列表
+ */
+const loadHistorySessions = async () => {
+  if (isLoadingHistory.value) return
+  
+  isLoadingHistory.value = true
+  
+  try {
+    const response = await fetch('/api/history/sessions?count=10')
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    historySessions.value = data
+    
+    // 同时加载统计信息
+    await loadHistoryStatistics()
+    
+    console.log('[History] Loaded sessions:', data.length)
+  } catch (error) {
+    console.error('[History] Failed to load sessions:', error)
+    alert('加载历史记录失败，请稍后重试')
+  } finally {
+    isLoadingHistory.value = false
+  }
+}
+
+/**
+ * 加载指定会话的详细内容
+ */
+const loadSessionDetail = async (sessionId) => {
+  if (isLoadingDetail.value) return
+  
+  isLoadingDetail.value = true
+  
+  try {
+    const response = await fetch(`/api/history/session/${sessionId}`)
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    sessionDetail.value = data
+    selectedSession.value = sessionId
+    expandedSessionId.value = sessionId
+    
+    console.log('[History] Loaded session detail:', sessionId)
+  } catch (error) {
+    console.error('[History] Failed to load session detail:', error)
+    alert('加载对话详情失败，请稍后重试')
+  } finally {
+    isLoadingDetail.value = false
+  }
+}
+
+/**
+ * 加载统计信息
+ */
+const loadHistoryStatistics = async () => {
+  try {
+    const response = await fetch('/api/history/statistics')
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    historyStats.value = data
+    
+    console.log('[History] Loaded statistics:', data)
+  } catch (error) {
+    console.error('[History] Failed to load statistics:', error)
+  }
+}
+
+/**
+ * 刷新历史记录
+ */
+const refreshHistory = async () => {
+  await loadHistorySessions()
+}
+
+/**
+ * 切换会话详情的展开状态
+ */
+const toggleSessionDetail = async (sessionId) => {
+  if (expandedSessionId.value === sessionId) {
+    // 如果当前已展开，则折叠
+    expandedSessionId.value = null
+    selectedSession.value = null
+    sessionDetail.value = null
+  } else {
+    // 加载并展开
+    await loadSessionDetail(sessionId)
+  }
+}
+
+/**
+ * 格式化历史记录时间戳
+ */
+const formatHistoryTime = (timestamp) => {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diffMs = now - date
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  
+  if (diffHours < 1) {
+    return '刚刚'
+  } else if (diffHours < 24) {
+    return `${diffHours} 小时前`
+  } else if (diffDays < 7) {
+    return `${diffDays} 天前`
+  } else {
+    return date.toLocaleDateString('zh-CN', { 
+      month: 'long', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+}
+
+/**
+ * 格式化消息时间戳
+ */
+const formatMessageTime = (timestamp) => {
+  if (!timestamp) return ''
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString('zh-CN', { 
+    hour: '2-digit', 
+    minute: '2-digit',
+    second: '2-digit'
   })
 }
 
@@ -555,6 +724,12 @@ const toggleSidebar = () => {
 const handleTabChange = (tabId) => {
   activeTab.value = tabId
   console.log('[UI] Tab changed to:', tabId)
+  
+  // 首次进入历史页面时自动加载数据
+  if (tabId === 'history' && historySessions.value.length === 0) {
+    console.log('[History] First time entering history tab, loading data...')
+    loadHistorySessions()
+  }
 }
 
 // 生命周期钩子
@@ -769,11 +944,135 @@ onUnmounted(() => {
       </div>
 
       <!-- 历史界面 -->
-      <div v-show="activeTab === 'history'" class="flex-1 flex items-center justify-center bg-white">
-        <div class="text-center text-gray-400">
-          <i class="fas fa-history text-6xl mb-4"></i>
-          <p class="text-xl font-medium">历史记录</p>
-          <p class="text-sm mt-2">此功能尚未实现</p>
+      <div v-show="activeTab === 'history'" class="flex-1 flex flex-col h-full bg-gray-50">
+        <!-- 顶部工具栏 -->
+        <div class="h-16 px-6 bg-white border-b border-gray-200 flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-4">
+            <h2 class="font-bold text-gray-900 text-lg">历史记录</h2>
+            <div class="flex items-center gap-2 text-sm">
+              <span class="px-2 py-1 rounded-full bg-blue-50 text-blue-600 text-xs font-medium">
+                <i class="fas fa-comments mr-1"></i>{{ historyStats.total_sessions }} 次对话
+              </span>
+              <span class="px-2 py-1 rounded-full bg-green-50 text-green-600 text-xs font-medium">
+                <i class="fas fa-brain mr-1"></i>{{ historyStats.total_memory_items }} 条记忆
+              </span>
+            </div>
+          </div>
+          
+          <div class="flex items-center gap-3">
+            <!-- 刷新按钮 -->
+            <button 
+              @click="refreshHistory"
+              :disabled="isLoadingHistory"
+              class="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <i class="fas fa-sync" :class="{ 'animate-spin': isLoadingHistory }"></i>
+              {{ isLoadingHistory ? '加载中...' : '刷新' }}
+            </button>
+          </div>
+        </div>
+        
+        <!-- 主内容区域 -->
+        <div class="flex-1 overflow-y-auto p-6">
+          <!-- 加载状态 -->
+          <div v-if="isLoadingHistory && historySessions.length === 0" class="flex flex-col items-center justify-center h-full text-gray-400 py-20">
+            <i class="fas fa-spinner fa-spin text-5xl mb-4"></i>
+            <p class="text-lg font-medium">加载历史记录中...</p>
+          </div>
+          
+          <!-- 空状态 -->
+          <div v-else-if="historySessions.length === 0" class="flex flex-col items-center justify-center h-full text-gray-400 py-20">
+            <i class="fas fa-history text-5xl mb-4"></i>
+            <p class="text-lg font-medium">暂无历史记录</p>
+            <p class="text-sm mt-2">开始对话后，历史记录将显示在这里</p>
+          </div>
+          
+          <!-- 会话列表 -->
+          <div v-else class="max-w-4xl mx-auto space-y-4">
+            <div 
+              v-for="session in historySessions" 
+              :key="session.session_id"
+              class="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow"
+            >
+              <!-- 会话头部 -->
+              <div 
+                @click="toggleSessionDetail(session.session_id)"
+                class="p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+              >
+                <div class="flex items-start justify-between">
+                  <div class="flex-1">
+                    <div class="flex items-center gap-2 mb-2">
+                      <i class="fas fa-comment-dots text-blue-500"></i>
+                      <span class="text-xs text-gray-500">{{ formatHistoryTime(session.created_at) }}</span>
+                      <span class="text-xs text-gray-400">{{ session.message_count }} 条消息</span>
+                    </div>
+                    <p class="text-gray-700 text-sm leading-relaxed">{{ session.summary }}</p>
+                    
+                    <!-- 关键要点标签 -->
+                    <div v-if="session.key_points && session.key_points.length > 0" class="flex flex-wrap gap-2 mt-3">
+                      <span 
+                        v-for="(point, idx) in session.key_points.slice(0, 3)" 
+                        :key="idx"
+                        class="px-2 py-1 bg-blue-50 text-blue-600 text-xs rounded-full"
+                      >
+                        {{ point }}
+                      </span>
+                      <span 
+                        v-if="session.key_points.length > 3"
+                        class="px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded-full"
+                      >
+                        +{{ session.key_points.length - 3 }}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <!-- 展开/折叠图标 -->
+                  <div class="ml-4">
+                    <i 
+                      class="fas transition-transform text-gray-400"
+                      :class="expandedSessionId === session.session_id ? 'fa-chevron-up' : 'fa-chevron-down'"
+                    ></i>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 会话详情（展开时显示） -->
+              <div 
+                v-if="expandedSessionId === session.session_id"
+                class="border-t border-gray-200 bg-gray-50"
+              >
+                <!-- 加载中状态 -->
+                <div v-if="isLoadingDetail" class="p-8 flex items-center justify-center">
+                  <i class="fas fa-spinner fa-spin text-blue-500 mr-2"></i>
+                  <span class="text-gray-600">加载对话详情...</span>
+                </div>
+                
+                <!-- 对话详情 -->
+                <div v-else-if="sessionDetail && sessionDetail.session_id === session.session_id" class="p-4 space-y-3 max-h-96 overflow-y-auto">
+                  <div 
+                    v-for="(msg, idx) in sessionDetail.messages" 
+                    :key="idx"
+                    class="flex"
+                    :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
+                  >
+                    <div 
+                      class="max-w-[80%] rounded-lg px-4 py-2 text-sm"
+                      :class="msg.role === 'user' 
+                        ? 'bg-blue-500 text-white rounded-br-none' 
+                        : 'bg-white border border-gray-200 rounded-bl-none'"
+                    >
+                      <div class="flex items-center gap-2 mb-1 text-xs opacity-70">
+                        <i class="fas" :class="msg.role === 'user' ? 'fa-user' : 'fa-robot'"></i>
+                        <span>{{ msg.role === 'user' ? '用户' : 'AI' }}</span>
+                        <span v-if="msg.timestamp">{{ formatMessageTime(msg.timestamp) }}</span>
+                      </div>
+                      <p class="whitespace-pre-wrap">{{ msg.content }}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
