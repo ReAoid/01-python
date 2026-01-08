@@ -92,7 +92,7 @@ class MemoryStructurer:
                     {
                         "role": msg.role,
                         "content": msg.content,
-                        "timestamp": getattr(msg, 'timestamp', None)
+                        "timestamp": getattr(msg, 'timestamp', None).isoformat() if hasattr(getattr(msg, 'timestamp', None), 'isoformat') else getattr(msg, 'timestamp', None)
                     }
                     for msg in history
                 ]
