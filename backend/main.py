@@ -304,7 +304,6 @@ async def websocket_chat(websocket: WebSocket):
 # 挂载静态文件（必须在路由定义之后）
 if frontend_path.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_path)), name="static")
-    # logger.info(f"静态文件目录: {frontend_path}")  <-- 已移至 startup_event
 
 # ============================================================================
 # 启动服务器

@@ -2,7 +2,6 @@ import json
 from typing import Dict, Any, Tuple
 from pathlib import Path
 
-from .settings import settings
 from . import paths
 
 class ConfigManager:

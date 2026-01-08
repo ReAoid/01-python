@@ -498,9 +498,6 @@ const toggleRecording = async () => {
                 }
             });
             isRecording.value = true;
-            
-            // 确保后端知道我们开始语音输入了 (更新 input_mode)
-            // 虽然不更新也能工作（后端会自动识别二进制帧），但更新状态更规范
             sendConfig();
             
         } catch (e) {
