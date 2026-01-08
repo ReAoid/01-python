@@ -2,6 +2,7 @@ import sys
 import logging
 from pathlib import Path
 import asyncio
+from contextlib import asynccontextmanager
 
 from backend.core.logger import init_logging, shutdown_logging
 
@@ -29,35 +30,16 @@ init_logging(
 )
 logger = logging.getLogger(__name__)
 
-# 创建 FastAPI 应用
-app = FastAPI(
-    title="灵依 Backend API",
-    description="灵依 智能助手后端服务",
-    version="1.0.0"
-)
-
-# 配置 CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # 生产环境应该限制来源
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # 定义路径
 frontend_path = project_root / "frontend"
 
-# ============================================================================
-# 路由定义
-# ============================================================================
-
-@app.on_event("startup")
-async def startup_event():
-    """启动后台服务。"""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    # Startup - 启动时执行
     logger.info("正在初始化后台服务...")
     
-    # 打印静态文件目录信息 (移到此处避免多进程重复打印)
+    # 打印静态文件目录信息
     if frontend_path.exists():
         logger.info(f"静态文件目录: {frontend_path}")
 
@@ -73,12 +55,32 @@ async def startup_event():
         logger.info("后台服务已初始化。")
     except Exception as e:
         logger.error(f"启动后台服务失败: {e}")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """后台服务关闭时清理日志队列等资源"""
+    
+    yield  # 应用运行期间
+    
+    # Shutdown - 关闭时执行
     shutdown_logging()
+
+# 创建 FastAPI 应用
+app = FastAPI(
+    title="灵依 Backend API",
+    description="灵依 智能助手后端服务",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# 配置 CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 生产环境应该限制来源
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ============================================================================
+# 路由定义
+# ============================================================================
 
 @app.get("/")
 async def root():

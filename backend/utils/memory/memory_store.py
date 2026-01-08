@@ -80,6 +80,9 @@ class SessionSummaryStore(BaseMemoryStore):
         if storage_dir is None:
             storage_dir = migration.user_memory_dir
         
+        # 保存 storage_dir 供外部访问
+        self.storage_dir = storage_dir
+        
         super().__init__(storage_dir / "session_summaries.json")
         
         self.summaries: Dict[str, SessionSummary] = {}
@@ -159,6 +162,9 @@ class MemoryItemStore(BaseMemoryStore):
     ):
         if storage_dir is None:
             storage_dir = migration.user_memory_dir
+        
+        # 保存 storage_dir 供外部访问
+        self.storage_dir = storage_dir
         
         super().__init__(storage_dir / "memory_items.json")
         
