@@ -183,7 +183,7 @@ class ASRService:
             self.running = False
             return False
         
-        logger.info(f"✅ ASR 服务已启动 (耗时 {time.time() - start_time:.2f}秒)")
+        logger.success(f"✅ ASR 服务已启动 (耗时 {time.time() - start_time:.2f}秒)")
         
         # 启动响应处理器
         self.handler_task = asyncio.create_task(self._response_handler())

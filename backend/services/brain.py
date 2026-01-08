@@ -218,8 +218,8 @@ class SessionManager:
         if output_mode == OutputMode.TEXT_AND_AUDIO and not self.tts.tts_ready:
             await self._send_text_to_frontend("【系统提示】语音服务启动失败，将仅以文本形式回复。")
         
-        logger.info(
-            f"System components initialized in {time.time() - start_time:.2f}s (input: {input_mode.value}, output: {output_mode.value}).")
+        logger.success(
+            f"系统组件初始化完成 (耗时 {time.time() - start_time:.2f}秒, 输入: {input_mode.value}, 输出: {output_mode.value})")
 
     async def stop(self):
         """
@@ -323,7 +323,9 @@ class SessionManager:
                         logger.info("Switching to Audio mode: Lazy starting TTS service...")
                         # 启动 TTS，传入音频回调
                         success = await self.tts.start(on_audio=self._send_audio_to_frontend)
-                        if not success:
+                        if success:
+                            logger.success("✅ TTS 服务懒启动成功")
+                        else:
                             await self._send_text_to_frontend("【系统提示】语音服务启动失败，将继续以纯文本形式回复。")
                     
                     self.output_mode = new_mode

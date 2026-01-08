@@ -39,13 +39,19 @@ class LoguruHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            # 使用 logging 的数值级别，避免自定义 level 名称不匹配
-            level = record.levelno
+            # 使用 logging 的级别名称，保持与标准 logging 文本级别一致
+            level = record.levelname
 
-            # depth 调整调用栈，使日志定位到业务代码
-            loguru_logger.opt(
+            # 使用 LogRecord 自带的位置信息
+            extra = {
+                "logger_name": record.name,
+                "logger_func": record.funcName,
+                "logger_line": record.lineno,
+            }
+
+            loguru_logger.bind(**extra).opt(
                 exception=record.exc_info,
-                depth=6,
+                depth=0,
             ).log(level, record.getMessage())
         except Exception:
             self.handleError(record)
@@ -69,7 +75,7 @@ def _configure_loguru_sinks(
         format=(
             "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
             "<level>{level: <8}</level> | "
-            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+            "<cyan>{extra[logger_name]}</cyan>:<cyan>{extra[logger_func]}</cyan>:<cyan>{extra[logger_line]}</cyan> - "
             "<level>{message}</level>"
         ),
     )
@@ -87,7 +93,7 @@ def _configure_loguru_sinks(
             level=log_level.upper(),
             format=(
                 "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | "
-                "{name}:{function}:{line} - {message}"
+                "{extra[logger_name]}:{extra[logger_func]}:{extra[logger_line]} - {message}"
             ),
             rotation=rotation,
             retention=retention,

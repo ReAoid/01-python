@@ -62,7 +62,7 @@ class _GenieTTSClient:
                 timeout=aiohttp.ClientTimeout(total=timeout)
             ) as response:
                 if response.status == 200:
-                    logger.info(f"✓ 成功连接到 Genie TTS 服务器: {self.base_url}")
+                    logger.success(f"✓ 成功连接到 Genie TTS 服务器: {self.base_url}")
                     return True
                 else:
                     logger.error(f"✗ Genie TTS 服务器返回错误状态码: {response.status}")
@@ -110,7 +110,7 @@ class _GenieTTSClient:
                 if response.status == 200:
                     result = await response.json()
                     self.character_name = character_name
-                    logger.info(f"✓ 成功加载角色 '{character_name}': {result}")
+                    logger.success(f"✓ 成功加载角色 '{character_name}': {result}")
                     return True
                 else:
                     error_text = await response.text()
@@ -159,7 +159,7 @@ class _GenieTTSClient:
                 if response.status == 200:
                     result = await response.json()
                     self.is_ready = True
-                    logger.info(f"✓ 成功设置参考音频: {result}")
+                    logger.success(f"✓ 成功设置参考音频: {result}")
                     return True
                 else:
                     error_text = await response.text()
