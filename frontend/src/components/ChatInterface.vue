@@ -118,6 +118,42 @@ const toggleVoiceMode = () => {
 };
 
 /**
+ * 主动热更新：清空当前会话并重新开始，但不包含历史总结
+ */
+const performHotReload = () => {
+    if (!isConnected.value) {
+        alert('未连接到服务器，无法执行热更新');
+        return;
+    }
+
+    // 1. 清空消息列表（保留初始欢迎消息）
+    messages.value = [
+        {
+            id: 1,
+            role: 'ai',
+            content: '你好！我是你的私人AI助手。有什么我可以帮你的吗？',
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            type: 'text'
+        }
+    ];
+
+    // 2. 重置所有状态
+    isTyping.value = false;
+    isRecording.value = false;
+    isInterrupted.value = false;
+    userInput.value = '';
+    audioManager.stopPlayback();
+    audioManager.stopRecording();
+
+    // 3. 通过WebSocket发送热更新指令给后端
+    socket.value.send(JSON.stringify({
+        type: "hot_reload"
+    }));
+
+    console.log("[UI] Hot reload triggered - context reset without history summary");
+};
+
+/**
  * 切换录音状态
  */
 const toggleRecording = async () => {
@@ -354,20 +390,7 @@ const toggleSidebar = () => {
 }
 
 // 生命周期钩子
-onMounted(async () => {
-  // 获取配置
-  try {
-      const res = await fetch('/api/config/page_config');
-      if (res.ok) {
-          const data = await res.json();
-          if (data.character_name) {
-              characterName.value = data.character_name;
-          }
-      }
-  } catch (e) {
-      console.warn('Failed to load character config, using default.', e);
-  }
-
+onMounted(() => {
   connectWebSocket();
 });
 
@@ -447,6 +470,20 @@ onUnmounted(() => {
           >
             <i class="fas" :class="isVoiceMode ? 'fa-volume-up' : 'fa-volume-mute'"></i>
             <span class="hidden md:inline">{{ isVoiceMode ? 'Voice On' : 'Voice Off' }}</span>
+          </button>
+
+          <!-- 主动热更新按钮 -->
+          <button 
+            @click="performHotReload"
+            :disabled="backendState === 'thinking' || backendState === 'speaking' || isTyping"
+            :class="{
+              'opacity-50 cursor-not-allowed': backendState === 'thinking' || backendState === 'speaking' || isTyping,
+              'hover:bg-green-100 hover:text-green-600': backendState === 'idle' && !isTyping
+            }"
+            class="w-9 h-9 flex items-center justify-center rounded-full text-gray-500 transition-colors border border-gray-200"
+            title="Hot Reload - 清空会话并重新开始（不包含历史总结）"
+          >
+            <i class="fas fa-sync"></i>
           </button>
 
           <button class="w-9 h-9 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 transition-colors">

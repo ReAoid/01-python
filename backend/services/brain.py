@@ -339,6 +339,10 @@ class SessionManager:
                     await self.websocket.send_text(json.dumps({"type": "pong"}))
                 except Exception:
                     pass
+        
+        elif action == "hot_reload":
+            # 处理主动热更新请求
+            await self._handle_hot_reload()
 
     async def _handle_stream_data(self, message: dict):
         """
@@ -830,3 +834,67 @@ class SessionManager:
 
         # 恢复空闲状态
         await self._send_state_update("idle")
+
+    async def _handle_hot_reload(self):
+        """
+        处理主动热更新请求。
+        
+        与正常的 renew 不同，热更新不会：
+        1. 总结之前的对话
+        2. 将历史总结注入到新会话的系统提示词中
+        
+        但会保留：
+        - 记忆系统中的所有数据（只是不在当前会话上下文中使用）
+        - 任务跟踪和其他系统状态
+        """
+        logger.info("🔄 [Hot Reload] 收到热更新请求，开始重置会话上下文...")
+        
+        try:
+            # 1. 停止当前正在进行的任何操作
+            if self.consumer_task and not self.consumer_task.done():
+                self.consumer_task.cancel()
+            
+            if self.current_llm:
+                await self.current_llm.cancel()
+            
+            # 2. 清理 TTS 队列
+            if self.output_mode == OutputMode.TEXT_AND_AUDIO:
+                await self.tts.clear_queue()
+            
+            # 3. 清空 ASR 缓冲
+            if self.asr:
+                await self.asr.clear_buffer()
+            
+            # 4. 重置会话计数和状态
+            self.conversation_count = 0
+            self.is_preparing_renew = False
+            self.incremental_cache = []
+            
+            # 5. 创建新的 LLM 会话（关键：不注入历史总结）
+            logger.info("创建新的 LLM 会话（不包含历史总结）...")
+            new_llm = await self._create_llm_session(is_renew=False)
+            
+            # 6. 切换到新会话
+            if self.current_llm:
+                # 关闭旧会话
+                try:
+                    await self.current_llm.close()
+                except Exception as e:
+                    logger.warning(f"关闭旧 LLM 会话失败: {e}")
+            
+            self.current_llm = new_llm
+            self.pending_llm = None
+            
+            # 7. 更新状态为空闲
+            await self._send_state_update("idle")
+            
+            # 8. 发送确认消息给前端
+            await self._send_text_to_frontend("【系统提示】热更新完成，已重置对话上下文。")
+            
+            logger.success("✅ [Hot Reload] 热更新完成，会话已重置")
+            
+        except Exception as e:
+            logger.error(f"❌ [Hot Reload] 热更新失败: {e}", exc_info=True)
+            await self._send_text_to_frontend("【系统错误】热更新失败，请重试。")
+            # 恢复空闲状态
+            await self._send_state_update("idle")
