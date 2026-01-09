@@ -22,6 +22,12 @@ import { AudioManager } from '../utils/audio.js'
 
 const audioManager = new AudioManager()
 
+// 角色名称
+const characterName = ref('灵依')
+
+// 初始欢迎消息
+const initialMessage = ref('你好！我是你的私人AI助手。有什么我可以帮你的吗？')
+
 /**
  * 消息列表数据
  * id: 唯一标识
@@ -49,7 +55,7 @@ const isTyping = ref(false)
 // 聊天区域的 DOM 引用 (用于实现自动滚动)
 const chatContainer = ref(null)
 
-// 侧边栏显示状态 (桌面端默认显示，移动端默认隐藏)
+// 侧边栏显示状态 (桌面端默认显示,移动端默认隐藏)
 const showSidebar = ref(true)
 
 // 当前激活的标签页
@@ -59,12 +65,6 @@ const activeTab = ref('chat')
 const socket = ref(null)
 const isConnected = ref(false)
 const reconnectInterval = ref(null)
-
-// 角色名称
-const characterName = ref('灵依')
-
-// 初始欢迎消息
-const initialMessage = ref('你好！我是你的私人AI助手。有什么我可以帮你的吗？')
 
 // 语音相关状态
 const isVoiceMode = ref(false) // 是否开启语音回复 (TTS)

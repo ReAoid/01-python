@@ -132,7 +132,7 @@ class MemoryManager:
         # 统计
         self._session_count = 0
         
-        logger.info(f"MemoryManager 初始化完成 (重构版)")
+        logger.info(f"MemoryManager 初始化完成")
         logger.info(f"  - 存储目录: {self.storage_dir}")
         logger.info(f"  - 已有总结: {len(self.summary_store.summaries)}")
         logger.info(f"  - 已有记忆项: {len(self.item_store.items)}")
