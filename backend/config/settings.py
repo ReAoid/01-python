@@ -52,6 +52,14 @@ class MemoryConfig(BaseModel):
     retrieval_top_k: int = 5  # 默认检索数量
     retrieval_threshold: float = 0.6  # 相似度阈值
 
+class UserProfileConfig(BaseModel):
+    """用户档案配置（简化版）"""
+    name: Optional[str] = None  # 用户姓名
+    nickname: Optional[str] = None  # 用户昵称
+    age: Optional[int] = None  # 用户年龄
+    gender: Optional[str] = None  # 用户性别
+    relationship_with_ai: Optional[str] = None  # 与AI的关系（如：朋友、助手、老师等）
+
 class TTSServerConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8001
@@ -133,6 +141,7 @@ class Settings(BaseSettings):
     - memory: 记忆系统配置
     - tts: 文本转语音配置
     - asr: 语音识别配置
+    - user_profile: 用户档案配置
     - third_party_api: 第三方服务 API 配置
     """
     # ========== LLM 配置 ==========
@@ -144,6 +153,7 @@ class Settings(BaseSettings):
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     tts: TTSConfig = Field(default_factory=TTSConfig)
     asr: ASRConfig = Field(default_factory=ASRConfig)
+    user_profile: UserProfileConfig = Field(default_factory=UserProfileConfig)
     third_party_api: ThirdPartyApiConfig = Field(default_factory=ThirdPartyApiConfig)
     
     # ========== 应用信息 ==========

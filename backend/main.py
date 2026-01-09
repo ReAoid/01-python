@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from backend.config import settings, paths
+from backend.config import settings, paths, prompts
 from backend.core.event_bus import event_bus, EventType
 from backend.services.memory_service import MemoryService
 from backend.services.task_service import TaskService
@@ -122,10 +122,15 @@ async def health_check():
 async def get_page_config():
     """获取页面配置"""
     char_name = settings.tts.active_character
+    
+    # 从 prompts.py 中加载角色人设参数
+    first_mes = prompts.CHARACTER_PERSONA.get('first_mes', '你好！我是你的私人AI助手。有什么我可以帮你的吗？')
+    
     # 假设模型路径遵循约定
     return JSONResponse({
         "character_name": char_name,
-        "model_path": f"/static/live2d/{char_name}/{char_name}.model3.json"
+        "model_path": f"/static/live2d/{char_name}/{char_name}.model3.json",
+        "first_message": first_mes
     })
 
 

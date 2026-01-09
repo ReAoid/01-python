@@ -10,6 +10,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 # 引入项目现有组件
 from backend.config import settings
+from backend.config.prompts import build_personalized_system_prompt
 
 # 引入服务组件
 from backend.services.asr_service import ASRService
@@ -815,9 +816,17 @@ class SessionManager:
         Returns:
             TextLLMClient: 已连接的 LLM 客户端实例
         """
-        # todo 补充人设输入
-        llm = TextLLMClient()
-
+        # 构建个性化系统提示词（融合用户信息）
+        system_prompt = build_personalized_system_prompt(
+            user_name=settings.user_profile.name,
+            user_nickname=settings.user_profile.nickname,
+            user_age=settings.user_profile.age,
+            user_gender=settings.user_profile.gender,
+            relationship_with_ai=settings.user_profile.relationship_with_ai,
+            long_term_context=""  # 这里为空，在对话时通过 RAG 注入
+        )
+        
+        llm = TextLLMClient(system_prompt=system_prompt)
         await llm.connect()
         return llm
 

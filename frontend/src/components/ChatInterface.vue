@@ -34,7 +34,7 @@ const messages = ref([
   {
     id: 1,
     role: 'ai',
-    content: '你好！我是你的私人AI助手。有什么我可以帮你的吗？',
+    content: initialMessage.value,
     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     type: 'text'
   }
@@ -62,6 +62,9 @@ const reconnectInterval = ref(null)
 
 // 角色名称
 const characterName = ref('灵依')
+
+// 初始欢迎消息
+const initialMessage = ref('你好！我是你的私人AI助手。有什么我可以帮你的吗？')
 
 // 语音相关状态
 const isVoiceMode = ref(false) // 是否开启语音回复 (TTS)
@@ -442,6 +445,29 @@ const toggleVoiceMode = () => {
 };
 
 /**
+ * 加载页面基础配置
+ */
+const fetchPageConfig = async () => {
+  try {
+    const response = await fetch('/api/config/page_config');
+    if (response.ok) {
+      const data = await response.json();
+      if (data.character_name) characterName.value = data.character_name;
+      if (data.first_message) {
+        initialMessage.value = data.first_message;
+        // 如果当前只有第一条默认消息，则更新它
+        if (messages.value.length === 1 && messages.value[0].role === 'ai') {
+          messages.value[0].content = data.first_message;
+        }
+      }
+      console.log("[Config] Loaded page config:", data);
+    }
+  } catch (err) {
+    console.error("[Config] Failed to fetch page config:", err);
+  }
+};
+
+/**
  * 主动热更新：清空当前会话并重新开始，但不包含历史总结
  */
 const performHotReload = () => {
@@ -455,7 +481,7 @@ const performHotReload = () => {
         {
             id: 1,
             role: 'ai',
-            content: '你好！我是你的私人AI助手。有什么我可以帮你的吗？',
+            content: initialMessage.value,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             type: 'text'
         }
@@ -731,6 +757,7 @@ const handleTabChange = (tabId) => {
 
 // 生命周期钩子
 onMounted(() => {
+  fetchPageConfig();
   connectWebSocket();
 });
 
