@@ -166,6 +166,17 @@ const isLoadingDetail = ref(false)
 const expandedSessionId = ref(null)
 
 // =========================================================================
+// 配置系统状态 (Config System State)
+// =========================================================================
+
+// 配置数据
+const systemConfig = ref(null)
+
+// 加载状态
+const isLoadingConfig = ref(false)
+const configLoadError = ref(null)
+
+// =========================================================================
 // 2. 核心逻辑方法 (Core Methods)
 // =========================================================================
 
@@ -408,6 +419,45 @@ const formatMessageTime = (timestamp) => {
     minute: '2-digit',
     second: '2-digit'
   })
+}
+
+/**
+ * 配置系统功能方法 (Config Methods)
+ */
+
+/**
+ * 加载系统配置
+ */
+const loadSystemConfig = async () => {
+  if (isLoadingConfig.value) return
+  
+  isLoadingConfig.value = true
+  configLoadError.value = null
+  
+  try {
+    const response = await fetch('/api/config/system')
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    systemConfig.value = data
+    
+    console.log('[Config] Loaded system config:', data)
+  } catch (error) {
+    console.error('[Config] Failed to load system config:', error)
+    configLoadError.value = error.message || '加载配置失败'
+  } finally {
+    isLoadingConfig.value = false
+  }
+}
+
+/**
+ * 刷新配置
+ */
+const refreshConfig = async () => {
+  await loadSystemConfig()
 }
 
 /**
@@ -752,6 +802,12 @@ const handleTabChange = (tabId) => {
   if (tabId === 'history' && historySessions.value.length === 0) {
     console.log('[History] First time entering history tab, loading data...')
     loadHistorySessions()
+  }
+  
+  // 首次进入配置页面时自动加载配置
+  if (tabId === 'settings' && !systemConfig.value) {
+    console.log('[Config] First time entering settings tab, loading config...')
+    loadSystemConfig()
   }
 }
 
@@ -1101,11 +1157,355 @@ onUnmounted(() => {
       </div>
 
       <!-- 配置界面 -->
-      <div v-show="activeTab === 'settings'" class="flex-1 flex items-center justify-center bg-white">
-        <div class="text-center text-gray-400">
-          <i class="fas fa-cog text-6xl mb-4"></i>
-          <p class="text-xl font-medium">系统配置</p>
-          <p class="text-sm mt-2">此功能尚未实现</p>
+      <div v-show="activeTab === 'settings'" class="flex-1 flex flex-col h-full bg-gray-50">
+        <!-- 顶部工具栏 -->
+        <div class="h-16 px-6 bg-white border-b border-gray-200 flex items-center justify-between shrink-0">
+          <div class="flex items-center gap-4">
+            <h2 class="font-bold text-gray-900 text-lg">系统配置</h2>
+            <div class="flex items-center gap-2">
+              <span v-if="isConnected" class="flex items-center gap-2 px-2 py-1 rounded-full bg-green-50 text-green-600 text-xs font-medium">
+                <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                WebSocket 已连接
+              </span>
+              <span v-else class="flex items-center gap-2 px-2 py-1 rounded-full bg-red-50 text-red-600 text-xs font-medium">
+                <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                WebSocket 未连接
+              </span>
+            </div>
+          </div>
+          
+          <div class="flex items-center gap-3">
+            <!-- 刷新按钮 -->
+            <button 
+              @click="refreshConfig"
+              :disabled="isLoadingConfig"
+              class="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <i class="fas fa-sync" :class="{ 'animate-spin': isLoadingConfig }"></i>
+              {{ isLoadingConfig ? '加载中...' : '刷新' }}
+            </button>
+          </div>
+        </div>
+        
+        <!-- 主内容区域 -->
+        <div class="flex-1 overflow-y-auto p-6">
+          <!-- 加载状态 -->
+          <div v-if="isLoadingConfig && !systemConfig" class="flex flex-col items-center justify-center h-full text-gray-400 py-20">
+            <i class="fas fa-spinner fa-spin text-5xl mb-4"></i>
+            <p class="text-lg font-medium">加载配置中...</p>
+          </div>
+          
+          <!-- 错误状态 -->
+          <div v-else-if="configLoadError" class="flex flex-col items-center justify-center h-full text-gray-400 py-20">
+            <i class="fas fa-exclamation-triangle text-5xl mb-4 text-red-400"></i>
+            <p class="text-lg font-medium text-red-600">加载配置失败</p>
+            <p class="text-sm mt-2 text-gray-600">{{ configLoadError }}</p>
+            <button 
+              @click="refreshConfig"
+              class="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors flex items-center gap-2"
+            >
+              <i class="fas fa-redo"></i>
+              重试
+            </button>
+          </div>
+          
+          <!-- 配置内容 -->
+          <div v-else-if="systemConfig" class="max-w-5xl mx-auto space-y-6">
+            <!-- 输入输出配置 -->
+            <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
+              <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="font-semibold text-gray-900 flex items-center gap-2">
+                  <i class="fas fa-exchange-alt text-blue-500"></i>
+                  输入输出模式
+                </h3>
+              </div>
+              <div class="p-6 space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div class="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                    <div>
+                      <div class="text-sm font-medium text-gray-700">输入模式</div>
+                      <div class="text-xs text-gray-500 mt-1">当前支持的输入方式</div>
+                    </div>
+                    <div class="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                      {{ systemConfig.input_output.input_mode === 'text' ? '文本' : '语音' }}
+                    </div>
+                  </div>
+                  <div class="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                    <div>
+                      <div class="text-sm font-medium text-gray-700">输出模式</div>
+                      <div class="text-xs text-gray-500 mt-1">当前的回复方式</div>
+                    </div>
+                    <div class="px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-sm font-medium">
+                      {{ systemConfig.input_output.output_mode === 'text_only' ? '纯文本' : '文本+语音' }}
+                    </div>
+                  </div>
+                </div>
+                <div class="p-4 bg-blue-50 rounded-lg">
+                  <div class="text-xs text-blue-800 font-medium mb-2">可用模式</div>
+                  <div class="flex flex-wrap gap-2">
+                    <span v-for="mode in systemConfig.input_output.available_input_modes" :key="mode" 
+                          class="px-2 py-1 bg-white text-blue-600 text-xs rounded border border-blue-200">
+                      输入: {{ mode === 'text' ? '文本' : '语音' }}
+                    </span>
+                    <span v-for="mode in systemConfig.input_output.available_output_modes" :key="mode" 
+                          class="px-2 py-1 bg-white text-green-600 text-xs rounded border border-green-200">
+                      输出: {{ mode === 'text_only' ? '纯文本' : '文本+语音' }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- AI助手配置 -->
+            <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
+              <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="font-semibold text-gray-900 flex items-center gap-2">
+                  <i class="fas fa-robot text-purple-500"></i>
+                  AI助手信息
+                </h3>
+              </div>
+              <div class="p-6 space-y-4">
+                <div class="flex items-start gap-4">
+                  <div class="w-16 h-16 rounded-full bg-gradient-to-br from-purple-400 to-blue-500 flex items-center justify-center text-white text-2xl shrink-0">
+                    <i class="fas fa-robot"></i>
+                  </div>
+                  <div class="flex-1">
+                    <div class="text-lg font-semibold text-gray-900">{{ systemConfig.ai_assistant.display_name }}</div>
+                    <div class="text-sm text-gray-500 mt-1">Character ID: {{ systemConfig.ai_assistant.character_name }}</div>
+                    <div class="text-sm text-gray-700 mt-3 leading-relaxed max-h-32 overflow-y-auto">
+                      {{ systemConfig.ai_assistant.description || '暂无描述' }}
+                    </div>
+                  </div>
+                </div>
+                <div class="p-4 bg-purple-50 rounded-lg">
+                  <div class="text-xs font-medium text-purple-800 mb-2">性格特征</div>
+                  <div class="text-sm text-purple-700 leading-relaxed max-h-24 overflow-y-auto">
+                    {{ systemConfig.ai_assistant.personality || '暂无性格设定' }}
+                  </div>
+                </div>
+                <div class="p-4 bg-blue-50 rounded-lg">
+                  <div class="text-xs font-medium text-blue-800 mb-2">首条欢迎语</div>
+                  <div class="text-sm text-blue-700">
+                    {{ systemConfig.ai_assistant.first_message || '暂无欢迎语' }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 大语言模型配置 -->
+            <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
+              <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="font-semibold text-gray-900 flex items-center gap-2">
+                  <i class="fas fa-brain text-pink-500"></i>
+                  大语言模型 (LLM)
+                </h3>
+              </div>
+              <div class="p-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div class="p-4 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-1">对话模型</div>
+                    <div class="text-sm font-medium text-gray-900">{{ systemConfig.llm.chat_model }}</div>
+                  </div>
+                  <div class="p-4 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-1">服务提供商</div>
+                    <div class="text-sm font-medium text-gray-900">{{ systemConfig.llm.chat_provider }}</div>
+                  </div>
+                  <div class="p-4 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-1">温度 (Temperature)</div>
+                    <div class="text-sm font-medium text-gray-900">{{ systemConfig.llm.temperature }}</div>
+                  </div>
+                  <div class="p-4 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-1">最大Token数</div>
+                    <div class="text-sm font-medium text-gray-900">{{ systemConfig.llm.max_tokens || '未限制' }}</div>
+                  </div>
+                  <div class="p-4 bg-gray-50 rounded-lg md:col-span-2">
+                    <div class="text-xs text-gray-500 mb-1">嵌入模型</div>
+                    <div class="text-sm font-medium text-gray-900">{{ systemConfig.llm.embedding_model }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 语音服务配置 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <!-- TTS配置 -->
+              <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
+                <div class="px-6 py-4 border-b border-gray-200">
+                  <h3 class="font-semibold text-gray-900 flex items-center gap-2">
+                    <i class="fas fa-volume-up text-green-500"></i>
+                    文本转语音 (TTS)
+                  </h3>
+                </div>
+                <div class="p-6 space-y-3">
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600">启用状态</span>
+                    <span class="px-2 py-1 rounded-full text-xs font-medium"
+                          :class="systemConfig.tts.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'">
+                      {{ systemConfig.tts.enabled ? '已启用' : '未启用' }}
+                    </span>
+                  </div>
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600">引擎</span>
+                    <span class="text-sm font-medium text-gray-900">{{ systemConfig.tts.engine }}</span>
+                  </div>
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600">角色</span>
+                    <span class="text-sm font-medium text-gray-900">{{ systemConfig.tts.active_character }}</span>
+                  </div>
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600">语言</span>
+                    <span class="text-sm font-medium text-gray-900">{{ systemConfig.tts.language }}</span>
+                  </div>
+                  <div class="pt-3 border-t border-gray-200">
+                    <div class="text-xs text-gray-500 mb-2">服务器配置</div>
+                    <div class="text-sm text-gray-700">
+                      {{ systemConfig.tts.server_host }}:{{ systemConfig.tts.server_port }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ASR配置 -->
+              <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
+                <div class="px-6 py-4 border-b border-gray-200">
+                  <h3 class="font-semibold text-gray-900 flex items-center gap-2">
+                    <i class="fas fa-microphone text-red-500"></i>
+                    语音识别 (ASR)
+                  </h3>
+                </div>
+                <div class="p-6 space-y-3">
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600">启用状态</span>
+                    <span class="px-2 py-1 rounded-full text-xs font-medium"
+                          :class="systemConfig.asr.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'">
+                      {{ systemConfig.asr.enabled ? '已启用' : '未启用' }}
+                    </span>
+                  </div>
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600">引擎</span>
+                    <span class="text-sm font-medium text-gray-900">{{ systemConfig.asr.engine }}</span>
+                  </div>
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600">模型</span>
+                    <span class="text-sm font-medium text-gray-900">{{ systemConfig.asr.model }}</span>
+                  </div>
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600">语言</span>
+                    <span class="text-sm font-medium text-gray-900">{{ systemConfig.asr.language }}</span>
+                  </div>
+                  <div class="pt-3 border-t border-gray-200">
+                    <div class="text-xs text-gray-500 mb-2">音频配置</div>
+                    <div class="text-sm text-gray-700">
+                      {{ systemConfig.asr.sample_rate }} Hz, {{ systemConfig.asr.channels }} 声道
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 记忆系统配置 -->
+            <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
+              <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="font-semibold text-gray-900 flex items-center gap-2">
+                  <i class="fas fa-database text-indigo-500"></i>
+                  记忆系统
+                </h3>
+              </div>
+              <div class="p-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div class="p-4 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-1">短期记忆长度</div>
+                    <div class="text-sm font-medium text-gray-900">{{ systemConfig.memory.max_history_length }} 轮对话</div>
+                  </div>
+                  <div class="p-4 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-1">检索数量</div>
+                    <div class="text-sm font-medium text-gray-900">Top {{ systemConfig.memory.retrieval_top_k }}</div>
+                  </div>
+                  <div class="p-4 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-1">相似度阈值</div>
+                    <div class="text-sm font-medium text-gray-900">{{ systemConfig.memory.retrieval_threshold }}</div>
+                  </div>
+                  <div class="p-4 bg-gray-50 rounded-lg md:col-span-3">
+                    <div class="text-xs text-gray-500 mb-1">嵌入模型</div>
+                    <div class="text-sm font-medium text-gray-900">{{ systemConfig.memory.embedding_model }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 用户档案配置 -->
+            <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
+              <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="font-semibold text-gray-900 flex items-center gap-2">
+                  <i class="fas fa-user text-yellow-500"></i>
+                  用户档案
+                </h3>
+              </div>
+              <div class="p-6">
+                <div v-if="systemConfig.user_profile.name || systemConfig.user_profile.nickname" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div v-if="systemConfig.user_profile.name" class="p-4 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-1">姓名</div>
+                    <div class="text-sm font-medium text-gray-900">{{ systemConfig.user_profile.name }}</div>
+                  </div>
+                  <div v-if="systemConfig.user_profile.nickname" class="p-4 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-1">昵称</div>
+                    <div class="text-sm font-medium text-gray-900">{{ systemConfig.user_profile.nickname }}</div>
+                  </div>
+                  <div v-if="systemConfig.user_profile.age" class="p-4 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-1">年龄</div>
+                    <div class="text-sm font-medium text-gray-900">{{ systemConfig.user_profile.age }} 岁</div>
+                  </div>
+                  <div v-if="systemConfig.user_profile.gender" class="p-4 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-1">性别</div>
+                    <div class="text-sm font-medium text-gray-900">{{ systemConfig.user_profile.gender }}</div>
+                  </div>
+                  <div v-if="systemConfig.user_profile.relationship_with_ai" class="p-4 bg-gray-50 rounded-lg md:col-span-2">
+                    <div class="text-xs text-gray-500 mb-1">与AI的关系</div>
+                    <div class="text-sm font-medium text-gray-900">{{ systemConfig.user_profile.relationship_with_ai }}</div>
+                  </div>
+                </div>
+                <div v-else class="text-center py-8 text-gray-400">
+                  <i class="fas fa-user-slash text-3xl mb-2"></i>
+                  <p class="text-sm">未配置用户信息</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- 系统配置 -->
+            <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
+              <div class="px-6 py-4 border-b border-gray-200">
+                <h3 class="font-semibold text-gray-900 flex items-center gap-2">
+                  <i class="fas fa-cog text-gray-500"></i>
+                  系统设置
+                </h3>
+              </div>
+              <div class="p-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div class="p-4 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-1">应用名称</div>
+                    <div class="text-sm font-medium text-gray-900">{{ systemConfig.system.app_name }}</div>
+                  </div>
+                  <div class="p-4 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-1">日志级别</div>
+                    <div class="text-sm font-medium text-gray-900">{{ systemConfig.system.log_level }}</div>
+                  </div>
+                  <div class="p-4 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-1">调试模式</div>
+                    <span class="px-2 py-1 rounded-full text-xs font-medium"
+                          :class="systemConfig.system.debug ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-600'">
+                      {{ systemConfig.system.debug ? '已启用' : '未启用' }}
+                    </span>
+                  </div>
+                  <div v-if="systemConfig.system.data_dir" class="p-4 bg-gray-50 rounded-lg">
+                    <div class="text-xs text-gray-500 mb-1">数据目录</div>
+                    <div class="text-sm font-medium text-gray-900 truncate" :title="systemConfig.system.data_dir">
+                      {{ systemConfig.system.data_dir }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -134,6 +134,101 @@ async def get_page_config():
     })
 
 
+@app.get("/api/config/system")
+async def get_system_config():
+    """
+    获取系统配置信息
+    
+    Returns:
+        系统配置数据，包括输入输出模式、AI助手配置、音频配置、系统配置等
+    """
+    try:
+        # 构建配置响应数据
+        config_data = {
+            # 输入输出模式配置
+            "input_output": {
+                "input_mode": "text",  # 默认文本输入模式
+                "output_mode": "text_only",  # 默认纯文本输出模式
+                "available_input_modes": ["text", "audio"],
+                "available_output_modes": ["text_only", "text_audio"]
+            },
+            
+            # AI助手配置
+            "ai_assistant": {
+                "character_name": settings.tts.active_character,
+                "display_name": prompts.CHARACTER_PERSONA.get('name', '灵依'),
+                "description": prompts.CHARACTER_PERSONA.get('description', ''),
+                "personality": prompts.CHARACTER_PERSONA.get('personality', ''),
+                "first_message": prompts.CHARACTER_PERSONA.get('first_mes', '')
+            },
+            
+            # 大语言模型配置
+            "llm": {
+                "chat_model": settings.chat_llm.model,
+                "chat_provider": settings.chat_llm.provider,
+                "temperature": settings.chat_llm.temperature,
+                "max_tokens": settings.chat_llm.max_tokens,
+                "embedding_model": settings.embedding_llm.model
+            },
+            
+            # TTS配置
+            "tts": {
+                "enabled": settings.tts.enabled,
+                "engine": settings.tts.engine,
+                "active_character": settings.tts.active_character,
+                "language": settings.tts.language,
+                "server_host": settings.tts.server.host,
+                "server_port": settings.tts.server.port,
+                "auto_start": settings.tts.server.auto_start
+            },
+            
+            # ASR配置
+            "asr": {
+                "enabled": settings.asr.enabled,
+                "engine": settings.asr.engine,
+                "model": settings.asr.model,
+                "language": settings.asr.language,
+                "sample_rate": settings.asr.audio.sample_rate,
+                "channels": settings.asr.audio.channels
+            },
+            
+            # 记忆系统配置
+            "memory": {
+                "max_history_length": settings.memory.max_history_length,
+                "embedding_model": settings.embedding_llm.model,
+                "retrieval_top_k": settings.memory.retrieval_top_k,
+                "retrieval_threshold": settings.memory.retrieval_threshold,
+                "min_summaries_for_structuring": settings.memory.min_summaries_for_structuring
+            },
+            
+            # 用户档案配置
+            "user_profile": {
+                "name": settings.user_profile.name,
+                "nickname": settings.user_profile.nickname,
+                "age": settings.user_profile.age,
+                "gender": settings.user_profile.gender,
+                "relationship_with_ai": settings.user_profile.relationship_with_ai
+            },
+            
+            # 系统配置
+            "system": {
+                "app_name": settings.app_name,
+                "debug": settings.system.debug,
+                "log_level": settings.system.log_level,
+                "data_dir": settings.system.data_dir
+            }
+        }
+        
+        return JSONResponse(content=config_data)
+        
+    except Exception as e:
+        logger.error(f"获取系统配置失败: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to get system config: {str(e)}"}
+        )
+
+
 # ============================================================================
 # 历史记录 API 路由
 # ============================================================================
