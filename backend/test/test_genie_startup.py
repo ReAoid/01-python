@@ -1,5 +1,6 @@
 import asyncio
 import sys
+import logging
 import json
 import wave
 from pathlib import Path
@@ -14,6 +15,8 @@ from typing import Optional, Tuple
 # parent.parent -> backend
 # parent.parent.parent -> 01-python (项目根目录)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+logger = logging.getLogger(__name__)
 
 # 2. 确保 backend 模块可以被导入
 if str(PROJECT_ROOT) not in sys.path:
@@ -39,7 +42,7 @@ class GenieTester:
         print("\n[1/5] 检查模型路径配置...")
         
         # 修正后的模型路径
-        base_model_path = PROJECT_ROOT / "backend/config/tts/GenieData/CharacterModels/v2ProPlus/feibi"
+        base_model_path = PROJECT_ROOT / "backend" / "data" / "tts" / "GenieData" / "CharacterModels" / "v2ProPlus" / "feibi"
         print(f"    - 目标模型路径: {base_model_path}")
 
         if not base_model_path.exists():
