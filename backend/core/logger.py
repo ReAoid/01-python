@@ -15,20 +15,6 @@ from datetime import datetime
 
 from loguru import logger as loguru_logger
 
-SUCCESS_LEVEL_NUM = 25
-
-
-def _ensure_success_level() -> None:
-    if not hasattr(logging, "SUCCESS"):
-        logging.SUCCESS = SUCCESS_LEVEL_NUM  # type: ignore[attr-defined]
-        logging.addLevelName(SUCCESS_LEVEL_NUM, "SUCCESS")
-
-        def success(self, message, *args, **kwargs):
-            if self.isEnabledFor(SUCCESS_LEVEL_NUM):
-                self._log(SUCCESS_LEVEL_NUM, message, args, **kwargs)
-
-        logging.Logger.success = success  # type: ignore[assignment]
-
 
 # 全局队列与监听器（单进程内统一使用）
 _log_queue: Optional[Queue] = None
@@ -172,8 +158,6 @@ def init_logging(
         if _queue_listener is not None:
             # 已初始化，无需重复
             return
-
-        _ensure_success_level()
 
         # 先配置 loguru sink（含启动时清空文件）
         _configure_loguru_sinks(log_level, log_file, rotation, retention)

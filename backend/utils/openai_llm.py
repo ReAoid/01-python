@@ -79,7 +79,7 @@ class OpenaiLlm(Llm):
             )
 
             content = response.choices[0].message.content
-            logger.success(f"大语言模型响应成功,生成了 {len(content)} 个字符")
+            logger.info(f"大语言模型响应成功,生成了 {len(content)} 个字符")
 
             return Message(role="assistant", content=content)
 
@@ -114,7 +114,7 @@ class OpenaiLlm(Llm):
             )
 
             content = response.choices[0].message.content
-            logger.success(f"大语言模型异步响应成功,生成了 {len(content)} 个字符")
+            logger.info(f"大语言模型异步响应成功,生成了 {len(content)} 个字符")
 
             return Message(role="assistant", content=content)
 
@@ -148,7 +148,7 @@ class OpenaiLlm(Llm):
                 **{k: v for k, v in kwargs.items() if k not in ["temperature"]}
             )
 
-            logger.success("大语言模型开始流式响应")
+            logger.info("大语言模型开始流式响应")
             for chunk in response:
                 content = chunk.choices[0].delta.content or ""
                 if content:
@@ -186,7 +186,7 @@ class OpenaiLlm(Llm):
                 **{k: v for k, v in kwargs.items() if k not in ["temperature"]}
             )
 
-            logger.success("大语言模型开始异步流式响应")
+            logger.info("大语言模型开始异步流式响应")
             async for chunk in response:
                 content = chunk.choices[0].delta.content or ""
                 if content:

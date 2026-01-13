@@ -93,7 +93,7 @@ class MCPRegistry:
             # 缓存 manifest
             self.manifest_cache[plugin_name] = manifest
 
-            logger.success(f"成功注册 MCP 插件: {plugin_name}")
+            logger.info(f"成功注册 MCP 插件: {plugin_name}")
 
         except json.JSONDecodeError as e:
             logger.error(f"Manifest JSON 格式错误 {manifest_path}: {e}")

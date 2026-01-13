@@ -238,7 +238,7 @@ class SessionManager:
         if output_mode == OutputMode.TEXT_AND_AUDIO and not self.tts.tts_ready:
             await self._send_text_to_frontend("【系统提示】语音服务启动失败，将仅以文本形式回复。")
         
-        logger.success(
+        logger.info(
             f"系统组件初始化完成 (耗时 {time.time() - start_time:.2f}秒, 输入: {input_mode.value}, 输出: {output_mode.value})")
 
     async def stop(self):
@@ -344,7 +344,7 @@ class SessionManager:
                         # 启动 TTS，传入音频回调
                         success = await self.tts.start(on_audio=self._send_audio_to_frontend)
                         if success:
-                            logger.success("✅ TTS 服务懒启动成功")
+                            logger.info("✅ TTS 服务懒启动成功")
                         else:
                             await self._send_text_to_frontend("【系统提示】语音服务启动失败，将继续以纯文本形式回复。")
                     
@@ -919,7 +919,7 @@ class SessionManager:
             # 8. 发送确认消息给前端
             await self._send_text_to_frontend("【系统提示】热更新完成，已重置对话上下文。")
             
-            logger.success("✅ [Hot Reload] 热更新完成，会话已重置")
+            logger.info("✅ [Hot Reload] 热更新完成，会话已重置")
             
         except Exception as e:
             logger.error(f"❌ [Hot Reload] 热更新失败: {e}", exc_info=True)

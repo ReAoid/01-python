@@ -104,7 +104,7 @@ const MAX_LOGS = 1000
 
 // 日志过滤状态
 const logFilters = ref({
-  levels: ['INFO', 'SUCCESS', 'WARNING', 'ERROR'], // 默认不显示 DEBUG
+  levels: ['INFO', 'WARNING', 'ERROR'], // 默认不显示 DEBUG
   search: ''
 })
 
@@ -119,7 +119,7 @@ const logStats = computed(() => ({
   total: logs.value.length,
   error: logs.value.filter(l => l.level === 'ERROR').length,
   warning: logs.value.filter(l => l.level === 'WARNING').length,
-  info: logs.value.filter(l => l.level === 'INFO' || l.level === 'SUCCESS').length
+  info: logs.value.filter(l => l.level === 'INFO').length
 }))
 
 // 过滤后的日志

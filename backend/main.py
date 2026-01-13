@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
         
         # 通知系统启动
         await event_bus.publish(EventType.SYSTEM_STARTUP, {})
-        logger.success("后台服务已成功初始化")
+        logger.info("后台服务已成功初始化")
     except Exception as e:
         logger.error(f"启动后台服务失败: {e}")
     
@@ -374,7 +374,7 @@ async def websocket_chat(websocket: WebSocket):
         return
     
     await websocket.accept()
-    logger.success("WebSocket 连接已成功建立")
+    logger.info("WebSocket 连接已成功建立")
     
     queue = asyncio.Queue()
     

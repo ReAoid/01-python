@@ -29,7 +29,7 @@ class MCPManager:
             try:
                 tool = MCPAdapterTool(plugin_name, self.registry)
                 self.tools[plugin_name] = tool
-                logger.success(f"加载工具: {plugin_name}")
+                logger.info(f"加载工具: {plugin_name}")
             except Exception as e:
                 logger.error(f"加载工具失败 {plugin_name}: {e}")
 
