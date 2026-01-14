@@ -76,12 +76,28 @@ class ASRAudioConfig(BaseModel):
     sample_width: int = 2
 
 
+class ASRVADConfig(BaseModel):
+    """ASR VAD 配置"""
+    enabled: bool = True
+    energy_threshold: float = 0.01
+    aggressiveness: int = 3
+
+class ASRPreprocessingConfig(BaseModel):
+    """ASR 音频预处理配置"""
+    noise_reduction: bool = False
+    auto_gain_control: bool = False
+
 class ASRConfig(BaseModel):
     enabled: bool = False
-    engine: str = "whisper"
+    engine: str = "dummy"
     model: str = "base"
+    model_path: Optional[str] = None
+    device: str = "cpu"
     language: str = "zh"
+    min_audio_length: float = 1.0
     audio: ASRAudioConfig = Field(default_factory=ASRAudioConfig)
+    vad: ASRVADConfig = Field(default_factory=ASRVADConfig)
+    preprocessing: ASRPreprocessingConfig = Field(default_factory=ASRPreprocessingConfig)
 
 # =============================================================================
 # 自定义 JSON Source

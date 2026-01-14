@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 
 def ensure_genie_data(genie_data_dir: Optional[str] = None) -> Path:
     """
-    确保 GenieData 目录及其必要的子目录（包括 CharacterModels）存在。
-    如果不存在，则尝试下载。
+    检查 GenieData 目录及其必要的子目录是否存在。
+    如果不存在，引导用户运行安装脚本。
     返回 GenieData 的绝对路径。
     
     Args:
@@ -40,6 +40,9 @@ def ensure_genie_data(genie_data_dir: Optional[str] = None) -> Path:
         
     Returns:
         Path: GenieData 目录的绝对路径
+        
+    Raises:
+        FileNotFoundError: 当 GenieData 目录不存在或不完整时
     """
     # 确定 genie_data_dir
     if genie_data_dir:
@@ -66,48 +69,56 @@ def ensure_genie_data(genie_data_dir: Optional[str] = None) -> Path:
     os.environ['GENIE_DATA_DIR'] = str(genie_data_path.resolve())
     logger.info(f"使用 GENIE_DATA_DIR={genie_data_path.resolve()}")
     
-    # 检查 GenieData/chinese-hubert-base
-    if not genie_data_path.exists() or not (genie_data_path / 'chinese-hubert-base').exists():
-        logger.warning(f"检测到 GenieData 不存在或不完整 ({genie_data_path})，正在自动下载...")
-        try:
-             from huggingface_hub import snapshot_download
-        except ImportError:
-             logger.error("错误: 未找到 huggingface_hub 模块")
-             logger.error("安装命令: pip install huggingface-hub")
-             raise ImportError("huggingface_hub module not found")
-
-        try:
-            logger.info("🚀 开始下载 Genie-TTS 资源... 这可能需要几分钟 ⏳")
-            genie_data_path.parent.mkdir(parents=True, exist_ok=True)
-            snapshot_download(
-                repo_id="High-Logic/Genie",
-                repo_type="model",
-                allow_patterns="GenieData/*",
-                local_dir=str(genie_data_path.parent),
-                local_dir_use_symlinks=False,
-            )
-            logger.info("✅ Genie-TTS 资源下载完成")
-        except Exception as e:
-            logger.error(f"下载 Genie-TTS 资源失败: {e}")
-            logger.error("请手动下载或设置 GENIE_DATA_DIR 环境变量")
-            raise
-
-    # 检查 CharacterModels
-    try:
-        import genie_tts as genie
-        character_models_path = genie_data_path / 'CharacterModels'
-        if not character_models_path.exists():
-            logger.info("未检测到角色模型目录，正在下载默认角色 'feibi'...")
-            try:
-                genie.load_predefined_character('feibi')
-                logger.info("✓ 默认角色 'feibi' 下载完成")
-            except Exception as e:
-                logger.warning(f"下载默认角色失败: {e}")
-    except ImportError:
-         logger.warning("未找到 genie_tts 模块，跳过 CharacterModels 检查")
-    except Exception as e:
-         logger.warning(f"检查 CharacterModels 时出错: {e}")
-
+    # 检查 GenieData 目录是否存在
+    if not genie_data_path.exists():
+        logger.error("="*60)
+        logger.error("❌ GenieData 目录不存在")
+        logger.error(f"路径: {genie_data_path}")
+        logger.error("")
+        logger.error("📦 请先安装 TTS 模型：")
+        logger.error("   python all_ready.py --tts-only")
+        logger.error("")
+        logger.error("或者手动下载模型：")
+        logger.error("   1. 访问: https://huggingface.co/High-Logic/Genie")
+        logger.error("   2. 下载 GenieData 目录")
+        logger.error(f"   3. 放置到: {genie_data_path}")
+        logger.error("="*60)
+        raise FileNotFoundError(f"GenieData 目录不存在: {genie_data_path}")
+    
+    # 检查 chinese-hubert-base 是否存在
+    hubert_path = genie_data_path / 'chinese-hubert-base'
+    if not hubert_path.exists():
+        logger.error("="*60)
+        logger.error("❌ GenieData 不完整，缺少 chinese-hubert-base 模型")
+        logger.error(f"路径: {hubert_path}")
+        logger.error("")
+        logger.error("🔧 请重新安装 TTS 模型：")
+        logger.error("   python all_ready.py --tts-only --force")
+        logger.error("")
+        logger.error("或者手动下载：")
+        logger.error("   从 https://huggingface.co/High-Logic/Genie 下载完整的 GenieData")
+        logger.error("="*60)
+        raise FileNotFoundError(f"chinese-hubert-base 模型不存在: {hubert_path}")
+    
+    # 检查 CharacterModels（警告但不中断）
+    character_models_path = genie_data_path / 'CharacterModels'
+    if not character_models_path.exists():
+        logger.warning("="*60)
+        logger.warning("⚠️  未检测到角色模型目录")
+        logger.warning(f"路径: {character_models_path}")
+        logger.warning("")
+        logger.warning("建议安装角色模型：")
+        logger.warning("   python all_ready.py --tts-only --force")
+        logger.warning("")
+        logger.warning("或者手动下载角色模型：")
+        logger.warning("   从 https://huggingface.co/High-Logic/Genie 下载 CharacterModels")
+        logger.warning("")
+        logger.warning("注意: TTS 服务可能需要角色模型才能正常工作")
+        logger.warning("="*60)
+    else:
+        logger.info(f"✓ CharacterModels 目录存在: {character_models_path}")
+    
+    logger.info(f"✅ GenieData 检查完成: {genie_data_path.resolve()}")
     return genie_data_path.resolve()
 
 

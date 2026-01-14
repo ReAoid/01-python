@@ -63,84 +63,40 @@ class ASRService:
         
         从 settings.asr 提取配置，构建用于子进程的配置字典。
         """
-        # 从 settings.asr 读取配置（如果存在）
         asr_settings = self.settings.asr if self.settings else None
         
-        # 引擎类型
-        engine = "dummy"
-        if asr_settings and hasattr(asr_settings, "engine"):
-            engine = asr_settings.engine
+        if not asr_settings:
+            return {"engine": "dummy", "enabled": False}
         
         # 基本配置
-        model_path = None
-        if asr_settings and hasattr(asr_settings, "model_path"):
-            model_path = asr_settings.model_path
-        
-        device = "cpu"
-        if asr_settings and hasattr(asr_settings, "device"):
-            device = asr_settings.device
-        
-        language = "zh"
-        if asr_settings and hasattr(asr_settings, "language"):
-            language = asr_settings.language
-        
-        # 从 settings.asr.audio 中读取音频配置
-        if asr_settings and hasattr(asr_settings, "audio"):
-            audio_obj = asr_settings.audio
-            if hasattr(audio_obj, "__dict__"):
-                audio_config = {
-                    "sample_rate": getattr(audio_obj, "sample_rate", None),
-                    "channels": getattr(audio_obj, "channels", None),
-                    "sample_width": getattr(audio_obj, "sample_width", None),
-                }
-            elif isinstance(audio_obj, dict):
-                audio_config = {
-                    "sample_rate": audio_obj.get("sample_rate"),
-                    "channels": audio_obj.get("channels"),
-                    "sample_width": audio_obj.get("sample_width"),
-                }
-            else:
-                audio_config = {}
-        else:
-            audio_config = {}
-        
-        # 如果 settings 有更详细的配置，合并进来
-        if asr_settings:
-            if hasattr(asr_settings, "vad"):
-                vad_obj = asr_settings.vad
-                if hasattr(vad_obj, "__dict__"):
-                    vad_config = vars(vad_obj)
-                elif isinstance(vad_obj, dict):
-                    vad_config = vad_obj
-                else:
-                    vad_config = {}
-            else:
-                vad_config = {}
-            
-            if hasattr(asr_settings, "preprocessing"):
-                prep_obj = asr_settings.preprocessing
-                if hasattr(prep_obj, "__dict__"):
-                    preprocessing_config = vars(prep_obj)
-                elif isinstance(prep_obj, dict):
-                    preprocessing_config = prep_obj
-                else:
-                    preprocessing_config = {}
-            else:
-                preprocessing_config = {}
-        else:
-            vad_config = {}
-            preprocessing_config = {}
-        
-        # 构建配置字典
         config_dict = {
-            "engine": engine,
-            "model_path": model_path,
-            "device": device,
-            "language": language,
-            "vad": vad_config,
-            "audio": audio_config,
-            "preprocessing": preprocessing_config,
+            "enabled": getattr(asr_settings, "enabled", False),
+            "engine": getattr(asr_settings, "engine", "dummy"),
+            "model_path": getattr(asr_settings, "model_path", None),
+            "device": getattr(asr_settings, "device", "cpu"),
+            "language": getattr(asr_settings, "language", "zh"),
+            "min_audio_length": getattr(asr_settings, "min_audio_length", 1.0),
         }
+        
+        # 音频配置
+        if hasattr(asr_settings, "audio"):
+            audio_obj = asr_settings.audio
+            config_dict["sample_rate"] = getattr(audio_obj, "sample_rate", 16000)
+            config_dict["channels"] = getattr(audio_obj, "channels", 1)
+            config_dict["sample_width"] = getattr(audio_obj, "sample_width", 2)
+        
+        # VAD 配置
+        if hasattr(asr_settings, "vad"):
+            vad_obj = asr_settings.vad
+            config_dict["vad_enabled"] = getattr(vad_obj, "enabled", True)
+            config_dict["energy_threshold"] = getattr(vad_obj, "energy_threshold", 0.01)
+            config_dict["aggressiveness"] = getattr(vad_obj, "aggressiveness", 3)
+        
+        # 预处理配置
+        if hasattr(asr_settings, "preprocessing"):
+            prep_obj = asr_settings.preprocessing
+            config_dict["noise_reduction"] = getattr(prep_obj, "noise_reduction", False)
+            config_dict["auto_gain_control"] = getattr(prep_obj, "auto_gain_control", False)
         
         return config_dict
     

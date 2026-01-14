@@ -11,6 +11,9 @@ conda create -n 01-python python=3.12
 conda activate 01-python
 cd backend
 pip install -r requirements.txt
+
+# 安装模型下载工具（必需）
+pip install huggingface-hub
 ```
 
 ## 系统环境变量
@@ -76,18 +79,63 @@ npm install
 ```
 
 ## TTS部署
-1.部署模型
+
+### 方式一：一键自动安装（推荐）
+
+使用 `all_ready.py` 脚本自动检测和安装所有模型：
+
+```shell
+# 1. 检测系统状态（不执行下载）
+python all_ready.py --check-only
+
+# 2. 自动安装所有缺失的模型
+python all_ready.py
+
+# 3. 仅安装TTS模型
+python all_ready.py --tts-only
+```
+
+脚本会自动：
+- 检测依赖包是否安装
+- 下载 Genie-TTS 基础模型（GenieData）
+- 下载默认角色模型（feibi）
+- 验证模型文件完整性
+
+
+
+### 方式二：手动安装
+
+1. **部署基础模型**
 ```text
 直接执行backend/genie_server.py文件自动下载
 or
 将https://huggingface.co/High-Logic/Genie/tree/main/GenieData下的文件放到backend/data/tts/GenieData下
 ```
-2.部署参考音频
+
+2. **部署角色模型**
 ```text
 直接执行backend/genie_server.py文件自动下载
 or
 将https://huggingface.co/High-Logic/Genie/tree/main/CharacterModels下的文件放到backend/data/tts/GenieData/CharacterModels下
 ```
+
+## ASR部署（可选）
+
+如果需要语音识别功能：
+
+```shell
+# 1. 检测ASR模型状态
+python all_ready.py --asr-only --check-only
+
+# 2. 根据提示手动下载FunASR模型
+
+```
+
+**快速配置**：
+1. 启用ASR：修改 `backend/config/core_config.json` 中的 `asr.enabled` 为 `true`
+2. 配置引擎：设置 `asr.engine` 为 `funasr_nano`
+3. 下载模型：按照 `backend/data/asr/README_FUNASR_SETUP.md` 的说明下载
+4. 配置路径：设置 `asr.model_path` 为模型文件路径
 ## 启动顺序
 1.启动TTS服务（如果启用了TTS）
 ```shell
