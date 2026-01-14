@@ -31,5 +31,9 @@ websockets>=12.0
 fastapi>=0.110.0
 uvicorn>=0.28.0
 
-# ASR 引擎 (FunASR-Nano)
-onnxruntime>=1.15.0
+# ASR 引擎
+# PyTorch 依赖 (根据硬件选择安装)
+# - CPU版本: pip install -r requirements-torch-cpu.txt
+# - GPU版本: pip install -r requirements-torch-gpu.txt
+funasr>=1.0.0
+# onnxruntime>=1.15.0

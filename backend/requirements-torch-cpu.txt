@@ -1,0 +1,11 @@
+# PyTorch CPU 版本依赖
+# 用于没有 NVIDIA GPU 或仅需 CPU 推理的场景
+# 
+# 安装方法:
+#   pip install -r requirements.txt
+#   pip install -r requirements-torch-cpu.txt
+
+# PyTorch CPU 版本
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0

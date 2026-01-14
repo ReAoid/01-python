@@ -1,0 +1,16 @@
+# PyTorch GPU 版本依赖 (CUDA 11.8)
+# 用于有 NVIDIA GPU 且需要加速推理的场景
+# 
+# 安装方法:
+#   pip install -r requirements.txt
+#   pip install -r requirements-torch-gpu.txt
+# 
+# 注意: 
+#   1. 确保已安装 NVIDIA 驱动和 CUDA 11.8
+#   2. 如需其他 CUDA 版本，请访问: https://pytorch.org/get-started/locally/
+
+# PyTorch GPU 版本 (CUDA 11.8)
+--extra-index-url https://download.pytorch.org/whl/cu118
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0

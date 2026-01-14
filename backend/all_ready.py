@@ -155,18 +155,8 @@ class ConfigLoader:
         if model_type == "tts":
             return self.get_data_dir("tts") / "GenieData"
         
-        # ASR 模型目录
-        config = self.get_config("asr")
-        engine = config.get("engine", "dummy")
-        
-        # 默认目录结构
-        engine_dirs = {
-            "funasr_nano": "funasr_nano",
-            "whisper": "whisper_base"
-        }
-        
-        dir_name = engine_dirs.get(engine, engine)
-        return self.get_data_dir("asr") / dir_name
+        # ASR 模型目录 - 默认使用 funasr_nano
+        return self.get_data_dir("asr") / "funasr_nano"
     
     def _to_abs_path(self, path: str) -> Path:
         """转换为绝对路径"""
@@ -268,20 +258,18 @@ class ModelChecker:
             print_warning(f"ASR 模型目录不存在: {model_dir}")
             return ModelStatus.NOT_FOUND, [f"{engine} 模型目录"]
         
-        # 检查是否存在 .onnx 或 .pt 文件
-        onnx_files = list(model_dir.glob("*.onnx"))
-        pt_files = list(model_dir.glob("*.pt"))
-        model_files = onnx_files + pt_files
+        # 检查是否存在模型文件 (.onnx, .pt, model.py)
+        model_files = list(model_dir.glob("*.onnx")) + list(model_dir.glob("*.pt")) + list(model_dir.glob("model.py"))
         
         if model_files:
-            total_size_mb = sum(f.stat().st_size for f in model_files) / (1024 * 1024)
-            file_types = set(f.suffix for f in model_files)
+            total_size_mb = sum(f.stat().st_size for f in model_files if f.is_file()) / (1024 * 1024)
+            file_names = [f.name for f in model_files]
             print_success(f"ASR 模型已存在: {model_dir}")
-            print_info(f"  文件类型: {', '.join(file_types)} | 总大小: {total_size_mb:.2f} MB | 文件数: {len(model_files)}")
+            print_info(f"  文件: {', '.join(file_names)} | 总大小: {total_size_mb:.2f} MB")
             return ModelStatus.INSTALLED, []
         else:
-            print_warning(f"ASR 模型目录存在但未找到模型文件 (.onnx/.pt): {model_dir}")
-            return ModelStatus.NOT_FOUND, [f"{engine} 模型文件 (.onnx/.pt)"]
+            print_warning(f"ASR 模型目录存在但未找到模型文件: {model_dir}")
+            return ModelStatus.NOT_FOUND, [f"{engine} 模型文件"]
 
 
 # =============================================================================
@@ -299,10 +287,10 @@ class ModelDownloader:
             "name": "Genie-TTS"
         },
         "asr": {
-            "repo_id": "FunAudioLLM/Fun-ASR-Nano-2512",
+            "repo_id": "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
             "patterns": "*",
-            "name": "Fun-ASR-Nano",
-            "size": "~200MB"
+            "name": "Paraformer-Large",
+            "size": "~220MB"
         }
     }
     
@@ -346,7 +334,7 @@ class ModelDownloader:
         from huggingface_hub import snapshot_download
         
         data_dir = self.config_loader.get_data_dir("tts")
-        genie_data_dir = self.config_loader.get_model_path("tts")
+        genie_data_dir = self.config_loader.get_model_dir("tts")
         
         # 检查是否已存在
         if genie_data_dir.exists() and not force:
@@ -397,8 +385,10 @@ class ModelDownloader:
             print_info("ASR 引擎配置为 'dummy'，无需下载模型")
             return True
         
-        if engine != "funasr_nano":
+        # 支持 funasr_automodel 引擎
+        if engine not in ["funasr_automodel"]:
             print_warning(f"未支持的 ASR 引擎: {engine}")
+            print_info("当前支持的引擎: funasr_automodel")
             return False
         
         model_dir = self.config_loader.get_model_dir("asr")
@@ -406,7 +396,7 @@ class ModelDownloader:
         # 检查是否已存在
         if not force and model_dir.exists():
             # 检查是否有模型文件
-            model_files = list(model_dir.glob("*.onnx")) + list(model_dir.glob("*.pt"))
+            model_files = list(model_dir.glob("*.onnx")) + list(model_dir.glob("*.pt")) + list(model_dir.glob("model.py"))
             if model_files:
                 print_info("ASR 模型已存在，跳过下载（使用 --force 强制重新下载）")
                 return True
@@ -474,9 +464,12 @@ class ModelDownloader:
             print_success("🎉 ASR 模型安装完成！")
             print_info("")
             print_info("下一步：")
-            print_info("  1. 在 backend/config/core_config.json 中设置 asr.enabled = true")
-            print_info("  2. 确保已安装: pip install onnxruntime")
-            print_info("  3. 运行测试: python backend/test/test_asr_functionality.py")
+            print_info("  1. 在 backend/config/core_config.json 中设置:")
+            print_info("     - asr.enabled = true")
+            print_info("     - asr.engine = \"funasr_automodel\"")
+            print_info("     - asr.model_dir = 模型目录路径")
+            print_info("  2. 确保已安装: pip install funasr")
+            print_info("  3. 运行测试: python backend/test/test_funasr_automodel.py")
             
             return True
             
@@ -496,8 +489,8 @@ class ModelDownloader:
                 "source": "HuggingFace",
                 "repo_id": self.REPO_CONFIG["asr"]["repo_id"],
                 "download_date": time.strftime("%Y-%m-%d"),
-                "engine": "funasr_nano",
-                "format": "ONNX"
+                "engine": "funasr_automodel",
+                "format": "PyTorch/ONNX"
             }
             
             metadata_file = model_dir / "metadata.json"
@@ -602,7 +595,7 @@ class DependencyChecker:
     # 可选包：(import名, 显示名, 描述)
     OPTIONAL_PACKAGES = [
         ('genie_tts', 'genie-tts', 'TTS功能'),
-        ('onnxruntime', 'onnxruntime', 'ASR功能'),
+        ('funasr', 'funasr', 'ASR功能'),
         ('huggingface_hub', 'huggingface-hub', '模型下载'),
     ]
     

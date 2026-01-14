@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional
 
 from backend.utils.asr.base_engine import BaseASREngine
 from backend.utils.asr.dummy_engine import DummyASREngine
-from backend.utils.asr.funasr_nano_engine import FunASRNanoEngine
+from backend.utils.asr.funasr_automodel_engine import FunASRAutoModelEngine
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +38,9 @@ async def asr_worker_async(request_queue: Queue, response_queue: Queue, config: 
     engine_type = config.get("engine", "dummy")
     enabled = config.get("enabled", True)
     
-    if enabled and engine_type == "funasr_nano":
-        logger.info("使用 FunASRNanoEngine")
-        engine: BaseASREngine = FunASRNanoEngine(config)
+    if enabled and engine_type == "funasr_automodel":
+        logger.info("使用 FunASRAutoModelEngine")
+        engine: BaseASREngine = FunASRAutoModelEngine(config)
     else:
         logger.info("使用 DummyASREngine (default)")
         engine = DummyASREngine(config)

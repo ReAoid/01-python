@@ -10,10 +10,12 @@ git clone https://github.com/ReAoid/01-python.git
 conda create -n 01-python python=3.12
 conda activate 01-python
 cd backend
-pip install -r requirements.txt
 
-# 安装模型下载工具（必需）
-pip install huggingface-hub
+pip install -r requirements.txt
+# PyTorch使用cpu
+pip install -r backend/requirements.txt -r backend/requirements-torch-cpu.txt
+# PyTorch使用gpu
+pip install -r backend/requirements.txt -r backend/requirements-torch-gpu.txt
 ```
 
 ## 系统环境变量
