@@ -287,10 +287,10 @@ class ModelDownloader:
             "name": "Genie-TTS"
         },
         "asr": {
-            "repo_id": "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+            "repo_id": "FunAudioLLM/Fun-ASR-Nano-2512",
             "patterns": "*",
-            "name": "Paraformer-Large",
-            "size": "~220MB"
+            "name": "FunAudioLLM/Fun-ASR-Nano-2512",
+            "size": "~2GB"
         }
     }
     
