@@ -251,7 +251,12 @@ class ModelChecker:
             print_info("ASR 引擎配置为 'dummy' (测试模式)，无需模型文件")
             return ModelStatus.INSTALLED, []
         
-        # 检查模型目录
+        # funasr 引擎使用 ModelScope 缓存
+        if engine == "funasr":
+            model_cache_dir = self.config_loader.get_data_dir("asr")
+            return self._check_funasr_models(model_cache_dir)
+        
+        # 其他引擎（funasr_automodel 等）检查模型目录
         model_dir = self.config_loader.get_model_dir("asr")
         
         if not model_dir.exists():
@@ -270,6 +275,60 @@ class ModelChecker:
         else:
             print_warning(f"ASR 模型目录存在但未找到模型文件: {model_dir}")
             return ModelStatus.NOT_FOUND, [f"{engine} 模型文件"]
+    
+    def _check_funasr_models(self, cache_dir: Path) -> Tuple[ModelStatus, List[str]]:
+        """检测 FunASR 模型（FunASR 缓存结构）"""
+        missing_items = []
+        
+        # 检查缓存目录
+        if not cache_dir.exists():
+            print_warning(f"FunASR 模型缓存目录不存在: {cache_dir}")
+            return ModelStatus.NOT_FOUND, ["FunASR 模型缓存目录"]
+        
+        # FunASR 使用 models 目录结构，而非 hub
+        models_dir = cache_dir / "models"
+        if not models_dir.exists():
+            print_warning(f"FunASR models 目录不存在: {models_dir}")
+            return ModelStatus.NOT_FOUND, ["FunASR models 目录"]
+        
+        # 检查各个模型
+        required_models = {
+            "VAD 模型": "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
+            "语言识别模型": "iic/SenseVoiceSmall",
+        }
+        
+        for model_name, model_id in required_models.items():
+            model_path = self._find_model_in_cache(models_dir, model_id)
+            if model_path:
+                print_success(f"{model_name}: ✓ ({model_path})")
+            else:
+                missing_items.append(model_name)
+                print_warning(f"{model_name}: ✗")
+        
+        if not missing_items:
+            print_success("FunASR 所有必需模型已安装")
+            return ModelStatus.INSTALLED, []
+        else:
+            print_warning(f"FunASR 模型不完整，缺失 {len(missing_items)} 项")
+            return ModelStatus.INCOMPLETE, missing_items
+    
+    def _find_model_in_cache(self, models_dir: Path, model_id: str) -> Optional[Path]:
+        """在缓存中查找模型"""
+        # FunASR 使用的目录结构: models/iic/SenseVoiceSmall
+        parts = model_id.split("/")
+        
+        if len(parts) == 2:
+            # 标准格式: iic/SenseVoiceSmall
+            model_path = models_dir / parts[0] / parts[1]
+            if model_path.exists():
+                return model_path
+        
+        # 也尝试查找其他可能的命名
+        for item in models_dir.rglob(parts[-1]):
+            if item.is_dir():
+                return item
+        
+        return None
 
 
 # =============================================================================
@@ -296,17 +355,18 @@ class ModelDownloader:
     
     def __init__(self, config_loader: ConfigLoader):
         self.config_loader = config_loader
-        self._ensure_huggingface_hub()
+        self._hf_available = self._check_huggingface_hub()
     
-    def _ensure_huggingface_hub(self):
+    def _check_huggingface_hub(self) -> bool:
         """检查 huggingface_hub 依赖"""
         try:
             import huggingface_hub
             print_success(f"huggingface_hub 已安装 (版本: {huggingface_hub.__version__})")
+            return True
         except ImportError:
-            print_error("缺少依赖: huggingface_hub")
+            print_warning("huggingface_hub 未安装（下载模型时需要）")
             print_info("安装命令: pip install huggingface-hub")
-            sys.exit(1)
+            return False
     
     def download(self, model_type: str, force: bool = False) -> bool:
         """
@@ -330,6 +390,11 @@ class ModelDownloader:
     def _download_tts(self, force: bool) -> bool:
         """下载TTS模型"""
         print_header("下载 TTS 模型")
+        
+        if not self._hf_available:
+            print_error("huggingface_hub 未安装，无法下载模型")
+            print_info("安装命令: pip install huggingface-hub")
+            return False
         
         from huggingface_hub import snapshot_download
         
@@ -385,11 +450,11 @@ class ModelDownloader:
             print_info("ASR 引擎配置为 'dummy'，无需下载模型")
             return True
         
-        # 支持 funasr_automodel 引擎
-        if engine not in ["funasr_automodel"]:
-            print_warning(f"未支持的 ASR 引擎: {engine}")
-            print_info("当前支持的引擎: funasr_automodel")
-            return False
+        # funasr 引擎使用 ModelScope 下载
+        if engine == "funasr":
+            cache_dir = self.config_loader.get_data_dir("asr")
+            return self._download_funasr_models(cache_dir, force)
+        
         
         model_dir = self.config_loader.get_model_dir("asr")
         
@@ -432,6 +497,11 @@ class ModelDownloader:
     
     def _execute_asr_download(self, model_dir: Path) -> bool:
         """执行ASR模型下载"""
+        if not self._hf_available:
+            print_error("huggingface_hub 未安装，无法下载模型")
+            print_info("安装命令: pip install huggingface-hub")
+            return False
+        
         from huggingface_hub import snapshot_download
         
         config = self.REPO_CONFIG["asr"]
@@ -469,13 +539,121 @@ class ModelDownloader:
             print_info("     - asr.engine = \"funasr_automodel\"")
             print_info("     - asr.model_dir = 模型目录路径")
             print_info("  2. 确保已安装: pip install funasr")
-            print_info("  3. 运行测试: python backend/test/test_funasr_automodel.py")
             
             return True
             
         except Exception as e:
             print_error(f"下载失败: {e}")
             self._show_download_error_help(str(e), model_dir)
+            return False
+    
+    def _download_funasr_models(self, cache_dir: Path, force: bool) -> bool:
+        """下载 FunASR 模型到 ModelScope 缓存"""
+        print_info("准备下载 FunASR 模型...")
+        
+        # 设置 ModelScope 缓存目录
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        os.environ["MODELSCOPE_CACHE"] = str(cache_dir)
+        
+        print_info(f"模型缓存目录: {cache_dir}")
+        
+        # 检查是否已存在
+        if not force:
+            hub_dir = cache_dir / "hub"
+            if hub_dir.exists() and list(hub_dir.iterdir()):
+                print_info("FunASR 模型已存在，跳过下载（使用 --force 强制重新下载）")
+                return True
+        
+        # 显示下载信息
+        print_info("")
+        print_info("📦 FunASR 模型信息：")
+        print_info("  将下载以下必需模型:")
+        print_info("    - VAD (语音端点检测): fsmn-vad")
+        print_info("    - LID (语言识别): iic/SenseVoiceSmall")
+        print_info("  预计总大小: ~200MB")
+        print_info("  下载时间: 5-10分钟（取决于网络速度）")
+        print_info("")
+        print_info("  可选模型（不包含在此次下载中）:")
+        print_info("    - SER (情感识别): 使用 --download-emotion 下载")
+        print_info("    - 说话人辨别: 使用 --download-speaker 下载")
+        print_info("")
+        
+        try:
+            response = input("是否立即下载 FunASR 模型？(y/N): ").strip().lower()
+            if response not in ['y', 'yes', '是']:
+                print_info("已取消下载")
+                return False
+        except (EOFError, KeyboardInterrupt):
+            print_info("\n已取消下载")
+            return False
+        
+        # 执行下载
+        return self._execute_funasr_download(cache_dir)
+    
+    def _execute_funasr_download(self, cache_dir: Path) -> bool:
+        """执行 FunASR 模型下载"""
+        print_info("")
+        print_warning("⏳ 开始下载 FunASR 模型，请稍候...")
+        print_info("")
+        
+        try:
+            # 检查 FunASR 是否已安装
+            try:
+                from funasr import AutoModel
+                print_success("✓ FunASR 已安装")
+            except ImportError:
+                print_error("❌ FunASR 未安装")
+                print_info("请先安装: pip install funasr")
+                return False
+            
+            # 下载必需模型
+            models_to_download = [
+                ("VAD 模型", "fsmn-vad"),
+                ("语言识别模型", "iic/SenseVoiceSmall"),
+            ]
+            
+            success_count = 0
+            for model_name, model_id in models_to_download:
+                print_step(f"下载 {model_name} ({model_id})...")
+                
+                try:
+                    # 使用 FunASR 的 AutoModel 下载模型
+                    model = AutoModel(model=model_id, device="cpu")
+                    print_success(f"✅ {model_name} 下载完成")
+                    success_count += 1
+                    
+                    # 释放模型内存
+                    del model
+                    
+                except Exception as e:
+                    print_error(f"❌ {model_name} 下载失败: {e}")
+                    # 继续下载其他模型
+                    continue
+            
+            if success_count == len(models_to_download):
+                print_success("")
+                print_success("🎉 FunASR 模型安装完成！")
+                print_info("")
+                print_info("已下载模型:")
+                for model_name, _ in models_to_download:
+                    print_info(f"  ✓ {model_name}")
+                print_info("")
+                print_info("下一步：")
+                print_info("  1. 在 backend/config/core_config.json 中设置:")
+                print_info("     - asr.enabled = true")
+                print_info("     - asr.engine = \"funasr\"")
+                print_info(f"     - asr.model_cache_dir = \"{cache_dir}\"")
+                print_info("  2. 运行测试: python backend/test/test_funasr_engine.py")
+                
+                return True
+            else:
+                print_warning(f"部分模型下载失败 ({success_count}/{len(models_to_download)} 成功)")
+                return False
+            
+        except Exception as e:
+            print_error(f"下载过程出错: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
 
@@ -670,6 +848,11 @@ class AllReadyManager:
         print_header("灵依智能体系统 - 模型与数据安装工具")
         
         print_info(f"项目根目录: {self.project_root}")
+        
+        # 处理可选模型下载
+        if self.args.download_emotion or self.args.download_speaker:
+            return self._download_optional_models()
+        
         print_info(f"运行模式: {'仅检测' if self.args.check_only else '检测并安装'}")
         
         if self.args.force:
@@ -798,6 +981,88 @@ class AllReadyManager:
                     success = False
         
         return success
+    
+    def _download_optional_models(self) -> int:
+        """下载可选的 FunASR 模型"""
+        print_header("FunASR 可选模型下载")
+        
+        # 获取 ASR 缓存目录
+        asr_cache_dir = self.config_loader.get_data_dir("asr")
+        os.environ["MODELSCOPE_CACHE"] = str(asr_cache_dir)
+        
+        print_info(f"模型缓存目录: {asr_cache_dir}")
+        print("")
+        
+        # 检查 FunASR 是否已安装
+        try:
+            from funasr import AutoModel
+            print_success("✓ FunASR 已安装")
+        except ImportError:
+            print_error("❌ FunASR 未安装")
+            print_info("请先安装: pip install funasr")
+            return 1
+        
+        print("")
+        
+        # 下载情感识别模型
+        if self.args.download_emotion:
+            print_step("下载情感识别模型 (emotion2vec_plus_large)...")
+            print_warning("⚠️  该模型约 1.8GB，下载可能需要较长时间")
+            print("")
+            
+            try:
+                response = input("是否继续下载？(y/N): ").strip().lower()
+                if response not in ['y', 'yes', '是']:
+                    print_info("已取消下载")
+                    return 0
+            except (EOFError, KeyboardInterrupt):
+                print_info("\n已取消下载")
+                return 0
+            
+            try:
+                print_info("正在下载...")
+                model = AutoModel(model="emotion2vec_plus_large", device="cpu")
+                print_success("✅ 情感识别模型下载完成")
+                del model
+            except Exception as e:
+                print_error(f"❌ 下载失败: {e}")
+                return 1
+        
+        # 下载说话人辨别模型
+        if self.args.download_speaker:
+            print_step("下载说话人辨别模型 (speech_campplus_sv_zh-cn_16k-common)...")
+            print("")
+            
+            try:
+                response = input("是否继续下载？(y/N): ").strip().lower()
+                if response not in ['y', 'yes', '是']:
+                    print_info("已取消下载")
+                    return 0
+            except (EOFError, KeyboardInterrupt):
+                print_info("\n已取消下载")
+                return 0
+            
+            try:
+                print_info("正在下载...")
+                model = AutoModel(model="iic/speech_campplus_sv_zh-cn_16k-common", device="cpu")
+                print_success("✅ 说话人辨别模型下载完成")
+                del model
+            except Exception as e:
+                print_error(f"❌ 下载失败: {e}")
+                return 1
+        
+        print("")
+        print_success("🎉 可选模型下载完成！")
+        print_info("")
+        print_info("下一步：")
+        print_info("  1. 在配置文件中启用相应功能:")
+        if self.args.download_emotion:
+            print_info("     - ser_enabled = true  (情感识别)")
+        if self.args.download_speaker:
+            print_info("     - speaker_enabled = true  (说话人辨别)")
+        print_info("  2. 运行测试: python backend/test/test_funasr_engine.py")
+        
+        return 0
 
 
 # =============================================================================
@@ -816,6 +1081,8 @@ def parse_args() -> argparse.Namespace:
   python all_ready.py --asr-only         # 仅检测和安装ASR模型
   python all_ready.py --force            # 强制重新安装所有模型
   python all_ready.py --check-only       # 仅检测，不执行下载
+  python all_ready.py --download-emotion # 下载FunASR情感识别模型
+  python all_ready.py --download-speaker # 下载FunASR说话人辨别模型
 
 配置文件:
   - backend/config/core_config.json      # 主配置文件
@@ -849,6 +1116,18 @@ def parse_args() -> argparse.Namespace:
         '--check-only',
         action='store_true',
         help='仅检测模型状态，不执行下载'
+    )
+    
+    parser.add_argument(
+        '--download-emotion',
+        action='store_true',
+        help='下载 FunASR 情感识别模型 (emotion2vec_plus_large, ~1.8GB)'
+    )
+    
+    parser.add_argument(
+        '--download-speaker',
+        action='store_true',
+        help='下载 FunASR 说话人辨别模型 (speech_campplus_sv_zh-cn_16k-common)'
     )
     
     return parser.parse_args()

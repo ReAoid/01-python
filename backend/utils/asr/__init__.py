@@ -5,6 +5,6 @@
 
 from backend.utils.asr.base_engine import BaseASREngine
 from backend.utils.asr.dummy_engine import DummyASREngine
-from backend.utils.asr.funasr_automodel_engine import FunASRAutoModelEngine
+from backend.utils.asr.funasr_engine import FunASREngine
 
-__all__ = ["BaseASREngine", "DummyASREngine", "FunASRAutoModelEngine"]
+__all__ = ["BaseASREngine", "DummyASREngine", "FunASREngine"]

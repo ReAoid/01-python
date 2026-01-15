@@ -49,9 +49,13 @@
   
   "asr": {
     "enabled": false,
-    "engine": "funasr_automodel",
-    "model": "funasr_nano",
+    "engine": "funasr",
+    "model_cache_dir": "backend/data/asr",
     "language": "zh",
+    "vad_enabled": true,
+    "lid_enabled": true,
+    "ser_enabled": false,
+    "speaker_enabled": false,
     "audio": {
       "sample_rate": 16000,
       "channels": 1,
