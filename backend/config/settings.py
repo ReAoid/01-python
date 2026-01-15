@@ -121,7 +121,25 @@ class JsonConfigSettingsSource(PydanticBaseSettingsSource):
     def _load_json_config(self) -> Dict[str, Any]:
         # 使用 paths 模块找到配置文件路径
         from . import paths
+        import shutil
+        
         config_path = paths.CONFIG_DIR / 'core_config.json'
+        default_config_path = paths.CONFIG_DIR / 'default_core_config.json'
+        
+        # 配置初始化：如果 core_config.json 不存在，则从默认配置复制
+        if not config_path.exists():
+            if default_config_path.exists():
+                try:
+                    shutil.copy2(default_config_path, config_path)
+                    print(f"Info: Created core_config.json from default template")
+                except Exception as e:
+                    print(f"Warning: Failed to copy default config: {e}")
+                    return {}
+            else:
+                print(f"Warning: Neither core_config.json nor default_core_config.json exists")
+                return {}
+        
+        # 加载配置文件
         if config_path.exists():
             try:
                 with open(config_path, 'r', encoding='utf-8') as f:

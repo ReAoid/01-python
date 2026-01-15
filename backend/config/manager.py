@@ -34,15 +34,6 @@ class ConfigManager:
     def get_tts_base_dir(self) -> Path:
         """获取 TTS 基础目录"""
         return paths.TTS_DIR
-    
-    def ensure_live2d_directory(self) -> bool:
-        """确保 Live2D 目录存在"""
-        try:
-            paths.LIVE2D_DIR.mkdir(parents=True, exist_ok=True)
-            return True
-        except Exception as e:
-            print(f"Error creating live2d directory: {e}")
-            return False
 
     # --- 通用 JSON 文件操作 ---
 
