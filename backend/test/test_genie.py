@@ -10,7 +10,7 @@ from typing import Optional, Tuple
 # 路径配置
 # -----------------------------------------------------------------------------
 # 1. 确定项目根目录 (01-python)
-# 当前文件: backend/test/test_genie_startup.py
+# 当前文件: backend/test/test_genie.py
 # parent -> backend/test
 # parent.parent -> backend
 # parent.parent.parent -> 01-python (项目根目录)

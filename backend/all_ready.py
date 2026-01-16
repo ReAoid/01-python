@@ -711,7 +711,7 @@ class ModelDownloader:
                 if optional_downloaded:
                     print_info("     - ser_enabled = true  (如果下载了情感识别)")
                     print_info("     - speaker_enabled = true  (如果下载了说话人辨别)")
-                print_info("  2. 运行测试: python backend/test/test_funasr_engine.py")
+                print_info("  2. 运行测试: python backend/test/test_funasr.py")
                 return True
             else:
                 missing_required = [m for m in required_models if m not in downloaded_models]
@@ -1268,7 +1268,7 @@ class AllReadyManager:
             print_info("  1. 在 backend/config/core_config.json 中启用相应功能:")
             for model_info in downloaded_models:
                 print_info(f"     - {model_info['config_key']} = true  ({model_info['name']})")
-            print_info("  2. 运行测试: python backend/test/test_funasr_engine.py")
+            print_info("  2. 运行测试: python backend/test/test_funasre.py")
         
         if skipped_models:
             print_info("")
