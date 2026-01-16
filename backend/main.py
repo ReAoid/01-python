@@ -22,6 +22,11 @@ from backend.services.memory_service import MemoryService
 from backend.services.task_service import TaskService
 from backend.services.self_awareness_service import SelfAwarenessService
 
+# 导入 API 路由
+from backend.api.config_api import router as config_router
+from backend.api.tts_api import router as tts_router
+from backend.api.asr_api import router as asr_router
+
 # 初始化统一日志系统（中央队列 + loguru）
 init_logging(
     log_level=settings.system.log_level,
@@ -78,6 +83,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 注册 API 路由
+app.include_router(config_router)
+app.include_router(tts_router)
+app.include_router(asr_router)
 
 # ============================================================================
 # 路由定义

@@ -124,7 +124,8 @@ class FunASREngine(BaseASREngine):
                 start_time = time.time()
                 self.vad_model = AutoModel(
                     model="fsmn-vad",
-                    device=self.device
+                    device=self.device,
+                    disable_update=True
                 )
                 logger.info(f"✅ VAD 模型加载完成 (耗时 {time.time() - start_time:.2f}秒)")
             
@@ -135,7 +136,8 @@ class FunASREngine(BaseASREngine):
                 self.lid_model = AutoModel(
                     model="iic/SenseVoiceSmall",
                     trust_remote_code=True,
-                    device=self.device
+                    device=self.device,
+                    disable_update=True
                 )
                 logger.info(f"✅ 语言识别模型加载完成 (耗时 {time.time() - start_time:.2f}秒)")
             
@@ -152,7 +154,8 @@ class FunASREngine(BaseASREngine):
                     start_time = time.time()
                     self.ser_model = AutoModel(
                         model="emotion2vec_plus_large",
-                        device=self.device
+                        device=self.device,
+                        disable_update=True
                     )
                     logger.info(f"✅ 情感识别模型加载完成 (耗时 {time.time() - start_time:.2f}秒)")
             
@@ -170,7 +173,8 @@ class FunASREngine(BaseASREngine):
                     self.speaker_model = AutoModel(
                         model="iic/speech_campplus_sv_zh-cn_16k-common",
                         trust_remote_code=True,
-                        device=self.device
+                        device=self.device,
+                        disable_update=True
                     )
                     logger.info(f"✅ 说话人辨别模型加载完成 (耗时 {time.time() - start_time:.2f}秒)")
             

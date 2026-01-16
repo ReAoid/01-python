@@ -14,6 +14,9 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import MessageBubble from './MessageBubble.vue'
 import Sidebar from './Sidebar.vue'
+import ConfigEditor from './ConfigEditor.vue'
+import TTSTestPanel from './TTSTestPanel.vue'
+import ASRTestPanel from './ASRTestPanel.vue'
 import { AudioManager } from '../utils/audio.js'
 
 // =========================================================================
@@ -175,6 +178,16 @@ const systemConfig = ref(null)
 // 加载状态
 const isLoadingConfig = ref(false)
 const configLoadError = ref(null)
+
+// 编辑状态
+const isEditingConfig = ref(false)
+const isSavingConfig = ref(false)
+const configSaveMessage = ref('')
+const editingConfig = ref(null)
+
+// 配置测试面板显示状态
+const showTTSTest = ref(false)
+const showASRTest = ref(false)
 
 // =========================================================================
 // 2. 核心逻辑方法 (Core Methods)
@@ -435,7 +448,8 @@ const loadSystemConfig = async () => {
   configLoadError.value = null
   
   try {
-    const response = await fetch('/api/config/system')
+    // 从新的 API 加载完整配置
+    const response = await fetch('/api/config/current')
     
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
@@ -458,6 +472,133 @@ const loadSystemConfig = async () => {
  */
 const refreshConfig = async () => {
   await loadSystemConfig()
+}
+
+/**
+ * 更新配置（从配置编辑器回调）
+ */
+const handleConfigUpdate = (newConfig) => {
+  systemConfig.value = newConfig
+  console.log('[Config] Config updated:', newConfig)
+}
+
+/**
+ * 开始编辑配置
+ */
+const startEditConfig = () => {
+  isEditingConfig.value = true
+  editingConfig.value = JSON.parse(JSON.stringify(systemConfig.value))
+}
+
+/**
+ * 取消编辑配置
+ */
+const cancelEditConfig = () => {
+  isEditingConfig.value = false
+  editingConfig.value = null
+  configSaveMessage.value = ''
+}
+
+/**
+ * 保存配置
+ */
+const saveConfig = async () => {
+  isSavingConfig.value = true
+  configSaveMessage.value = ''
+  
+  try {
+    const response = await fetch('/api/config/update', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(editingConfig.value)
+    })
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || '保存失败')
+    }
+    
+    const result = await response.json()
+    
+    configSaveMessage.value = '保存成功！'
+    isEditingConfig.value = false
+    
+    // 更新配置
+    systemConfig.value = result.config
+    
+    // 3秒后清除消息
+    setTimeout(() => {
+      configSaveMessage.value = ''
+    }, 3000)
+  } catch (error) {
+    console.error('保存配置失败:', error)
+    configSaveMessage.value = `保存失败: ${error.message}`
+  } finally {
+    isSavingConfig.value = false
+  }
+}
+
+/**
+ * 重置配置
+ */
+const resetConfig = async () => {
+  if (!confirm('确定要重置所有配置到默认值吗？此操作不可撤销。')) {
+    return
+  }
+  
+  isSavingConfig.value = true
+  configSaveMessage.value = ''
+  
+  try {
+    const response = await fetch('/api/config/reset', {
+      method: 'POST'
+    })
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || '重置失败')
+    }
+    
+    const result = await response.json()
+    
+    configSaveMessage.value = '配置已重置！'
+    isEditingConfig.value = false
+    
+    // 更新配置
+    systemConfig.value = result.config
+    editingConfig.value = null
+    
+    setTimeout(() => {
+      configSaveMessage.value = ''
+    }, 3000)
+  } catch (error) {
+    console.error('重置配置失败:', error)
+    configSaveMessage.value = `重置失败: ${error.message}`
+  } finally {
+    isSavingConfig.value = false
+  }
+}
+
+/**
+ * 打开 TTS 测试面板
+ */
+const handleTestTTS = () => {
+  showTTSTest.value = !showTTSTest.value
+  if (showTTSTest.value) {
+    showASRTest.value = false
+  }
+}
+
+/**
+ * 打开 ASR 测试面板
+ */
+const handleTestASR = () => {
+  showASRTest.value = !showASRTest.value
+  if (showASRTest.value) {
+    showTTSTest.value = false
+  }
 }
 
 /**
@@ -1175,6 +1316,49 @@ onUnmounted(() => {
           </div>
           
           <div class="flex items-center gap-3">
+            <!-- 保存消息 -->
+            <div v-if="configSaveMessage" 
+                 class="px-3 py-1.5 rounded-lg text-sm font-medium"
+                 :class="configSaveMessage.includes('成功') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
+              {{ configSaveMessage }}
+            </div>
+
+            <!-- 编辑配置按钮组 -->
+            <template v-if="!isEditingConfig">
+              <button 
+                @click="startEditConfig"
+                class="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors flex items-center gap-2"
+              >
+                <i class="fas fa-edit"></i>
+                编辑配置
+              </button>
+            </template>
+            
+            <template v-else>
+              <button 
+                @click="cancelEditConfig"
+                :disabled="isSavingConfig"
+                class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300 transition-colors disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button 
+                @click="saveConfig"
+                :disabled="isSavingConfig"
+                class="px-4 py-2 bg-green-500 text-white rounded-lg text-sm hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                <i class="fas" :class="isSavingConfig ? 'fa-spinner fa-spin' : 'fa-save'"></i>
+                {{ isSavingConfig ? '保存中...' : '保存' }}
+              </button>
+              <button 
+                @click="resetConfig"
+                :disabled="isSavingConfig"
+                class="px-4 py-2 bg-red-500 text-white rounded-lg text-sm hover:bg-red-600 transition-colors disabled:opacity-50"
+              >
+                重置
+              </button>
+            </template>
+            
             <!-- 刷新按钮 -->
             <button 
               @click="refreshConfig"
@@ -1211,6 +1395,18 @@ onUnmounted(() => {
           
           <!-- 配置内容 -->
           <div v-else-if="systemConfig" class="max-w-5xl mx-auto space-y-6">
+            <!-- 配置编辑器 -->
+            <ConfigEditor 
+              :config="systemConfig"
+              :is-editing="isEditingConfig"
+              :editing-config="editingConfig"
+              @update="handleConfigUpdate"
+              @test-tts="handleTestTTS"
+              @test-asr="handleTestASR"
+            />
+            
+            <!-- 原有的只读配置显示（保留作为参考） -->
+            <div v-if="false">
             <!-- 输入输出配置 -->
             <div class="bg-white rounded-lg border border-gray-200 shadow-sm">
               <div class="px-6 py-4 border-b border-gray-200">
@@ -1505,6 +1701,7 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
+            </div><!-- 结束 v-if="false" -->
           </div>
         </div>
       </div>
@@ -1653,6 +1850,12 @@ onUnmounted(() => {
       </div>
     </div>
   </div>
+  
+  <!-- TTS 测试弹窗 -->
+  <TTSTestPanel v-if="showTTSTest" @close="showTTSTest = false" />
+  
+  <!-- ASR 测试弹窗 -->
+  <ASRTestPanel v-if="showASRTest" @close="showASRTest = false" />
 </template>
 
 <style scoped>
