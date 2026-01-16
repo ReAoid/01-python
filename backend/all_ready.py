@@ -291,7 +291,7 @@ class ModelChecker:
             print_warning(f"FunASR models 目录不存在: {models_dir}")
             return ModelStatus.NOT_FOUND, ["FunASR models 目录"]
         
-        # 检查各个模型
+        # 检查必需模型
         required_models = {
             "VAD 模型": "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
             "语言识别模型": "iic/SenseVoiceSmall",
@@ -304,6 +304,21 @@ class ModelChecker:
             else:
                 missing_items.append(model_name)
                 print_warning(f"{model_name}: ✗")
+        
+        # 检查可选模型（仅显示状态，不影响安装判断）
+        optional_models = {
+            "情感识别模型": "iic/emotion2vec_plus_large",
+            "说话人辨别模型": "iic/speech_campplus_sv_zh-cn_16k-common",
+        }
+        
+        print("")
+        print_info("可选模型状态:")
+        for model_name, model_id in optional_models.items():
+            model_path = self._find_model_in_cache(models_dir, model_id)
+            if model_path:
+                print_success(f"  {model_name}: ✓ ({model_path.name})")
+            else:
+                print_info(f"  {model_name}: ✗ (使用 --download-emotion 或 --download-speaker 下载)")
         
         if not missing_items:
             print_success("FunASR 所有必需模型已安装")
@@ -548,52 +563,27 @@ class ModelDownloader:
             return False
     
     def _download_funasr_models(self, cache_dir: Path, force: bool) -> bool:
-        """下载 FunASR 模型到 ModelScope 缓存"""
-        print_info("准备下载 FunASR 模型...")
+        """下载 FunASR 模型到 ModelScope 缓存（逐个询问）"""
+        print_info("准备检查和下载 FunASR 模型...")
         
         # 设置 ModelScope 缓存目录
         cache_dir.mkdir(parents=True, exist_ok=True)
         os.environ["MODELSCOPE_CACHE"] = str(cache_dir)
         
         print_info(f"模型缓存目录: {cache_dir}")
-        
-        # 检查是否已存在
-        if not force:
-            hub_dir = cache_dir / "hub"
-            if hub_dir.exists() and list(hub_dir.iterdir()):
-                print_info("FunASR 模型已存在，跳过下载（使用 --force 强制重新下载）")
-                return True
-        
-        # 显示下载信息
         print_info("")
-        print_info("📦 FunASR 模型信息：")
-        print_info("  将下载以下必需模型:")
-        print_info("    - VAD (语音端点检测): fsmn-vad")
-        print_info("    - LID (语言识别): iic/SenseVoiceSmall")
-        print_info("  预计总大小: ~200MB")
-        print_info("  下载时间: 5-10分钟（取决于网络速度）")
-        print_info("")
-        print_info("  可选模型（不包含在此次下载中）:")
-        print_info("    - SER (情感识别): 使用 --download-emotion 下载")
-        print_info("    - 说话人辨别: 使用 --download-speaker 下载")
-        print_info("")
+        print_info("💡 提示:")
+        print_info("  - 将逐个检查必需模型的安装状态")
+        print_info("  - 如果模型缺失，会询问您是否下载")
+        print_info("  - 可选模型请使用 --download-emotion 或 --download-speaker 下载")
         
-        try:
-            response = input("是否立即下载 FunASR 模型？(y/N): ").strip().lower()
-            if response not in ['y', 'yes', '是']:
-                print_info("已取消下载")
-                return False
-        except (EOFError, KeyboardInterrupt):
-            print_info("\n已取消下载")
-            return False
-        
-        # 执行下载
+        # 直接执行逐个检查和下载
         return self._execute_funasr_download(cache_dir)
     
     def _execute_funasr_download(self, cache_dir: Path) -> bool:
-        """执行 FunASR 模型下载"""
+        """执行 FunASR 模型下载（逐个询问）"""
         print_info("")
-        print_warning("⏳ 开始下载 FunASR 模型，请稍候...")
+        print_info("开始检查和下载 FunASR 模型...")
         print_info("")
         
         try:
@@ -606,48 +596,129 @@ class ModelDownloader:
                 print_info("请先安装: pip install funasr")
                 return False
             
-            # 下载必需模型
-            models_to_download = [
-                ("VAD 模型", "fsmn-vad"),
-                ("语言识别模型", "iic/SenseVoiceSmall"),
+            print_info("")
+            
+            # 定义必需模型及其信息
+            models_info = [
+                {
+                    "name": "VAD 模型",
+                    "id": "fsmn-vad",
+                    "description": "语音端点检测，识别音频中的有效语音段",
+                    "size": "~4MB",
+                    "path": cache_dir / "models" / "iic" / "speech_fsmn_vad_zh-cn-16k-common-pytorch"
+                },
+                {
+                    "name": "语言识别模型",
+                    "id": "iic/SenseVoiceSmall",
+                    "description": "多语言语音识别和转写（支持中/英/日/韩/粤语）",
+                    "size": "~900MB",
+                    "path": cache_dir / "models" / "iic" / "SenseVoiceSmall"
+                },
             ]
             
-            success_count = 0
-            for model_name, model_id in models_to_download:
-                print_step(f"下载 {model_name} ({model_id})...")
+            downloaded_models = []
+            skipped_models = []
+            failed_models = []
+            
+            # 逐个检查和下载模型
+            for model_info in models_info:
+                model_name = model_info["name"]
+                model_id = model_info["id"]
+                model_path = model_info["path"]
                 
+                # 检查模型是否已存在
+                if model_path.exists():
+                    print_success(f"✓ {model_name} 已安装")
+                    downloaded_models.append(model_name)
+                    continue
+                
+                # 显示模型信息
+                print_info("─" * 60)
+                print_warning(f"⚠️  {model_name} 未安装")
+                print_info(f"  模型 ID: {model_id}")
+                print_info(f"  功能: {model_info['description']}")
+                print_info(f"  大小: {model_info['size']}")
+                print_info("")
+                
+                # 询问用户是否下载
                 try:
-                    # 使用 FunASR 的 AutoModel 下载模型
+                    response = input(f"是否下载 {model_name}？(y/N): ").strip().lower()
+                    if response not in ['y', 'yes', '是']:
+                        print_info(f"已跳过 {model_name}")
+                        skipped_models.append(model_name)
+                        print_info("")
+                        continue
+                except (EOFError, KeyboardInterrupt):
+                    print_info(f"\n已跳过 {model_name}")
+                    skipped_models.append(model_name)
+                    print_info("")
+                    continue
+                
+                # 下载模型
+                print_step(f"正在下载 {model_name}...")
+                try:
                     model = AutoModel(model=model_id, device="cpu")
                     print_success(f"✅ {model_name} 下载完成")
-                    success_count += 1
+                    downloaded_models.append(model_name)
                     
                     # 释放模型内存
                     del model
                     
                 except Exception as e:
                     print_error(f"❌ {model_name} 下载失败: {e}")
-                    # 继续下载其他模型
-                    continue
+                    failed_models.append((model_name, str(e)))
+                
+                print_info("")
             
-            if success_count == len(models_to_download):
-                print_success("")
-                print_success("🎉 FunASR 模型安装完成！")
+            # 显示下载总结
+            print_info("─" * 60)
+            print_header("下载总结")
+            
+            if downloaded_models:
+                print_success(f"✅ 已安装的模型 ({len(downloaded_models)}):")
+                for model_name in downloaded_models:
+                    print_success(f"  ✓ {model_name}")
                 print_info("")
-                print_info("已下载模型:")
-                for model_name, _ in models_to_download:
-                    print_info(f"  ✓ {model_name}")
+            
+            if skipped_models:
+                print_warning(f"⏭️  跳过的模型 ({len(skipped_models)}):")
+                for model_name in skipped_models:
+                    print_warning(f"  - {model_name}")
                 print_info("")
+            
+            if failed_models:
+                print_error(f"❌ 下载失败的模型 ({len(failed_models)}):")
+                for model_name, error in failed_models:
+                    print_error(f"  ✗ {model_name}: {error}")
+                print_info("")
+            
+            # 检查是否至少有必需的模型
+            required_models = ["VAD 模型", "语言识别模型"]
+            installed_required = [m for m in required_models if m in downloaded_models]
+            
+            if len(installed_required) == len(required_models):
+                print_success("🎉 所有必需模型已安装！")
+                print_info("")
+                
+                # 询问是否下载可选模型
+                optional_downloaded = self._ask_download_optional_models(cache_dir)
+                
                 print_info("下一步：")
                 print_info("  1. 在 backend/config/core_config.json 中设置:")
                 print_info("     - asr.enabled = true")
                 print_info("     - asr.engine = \"funasr\"")
                 print_info(f"     - asr.model_cache_dir = \"{cache_dir}\"")
+                if optional_downloaded:
+                    print_info("     - ser_enabled = true  (如果下载了情感识别)")
+                    print_info("     - speaker_enabled = true  (如果下载了说话人辨别)")
                 print_info("  2. 运行测试: python backend/test/test_funasr_engine.py")
-                
                 return True
             else:
-                print_warning(f"部分模型下载失败 ({success_count}/{len(models_to_download)} 成功)")
+                missing_required = [m for m in required_models if m not in downloaded_models]
+                print_warning("⚠️  部分必需模型未安装")
+                print_warning(f"缺失: {', '.join(missing_required)}")
+                print_info("")
+                print_info("请重新运行: python backend/all_ready.py --asr-only")
                 return False
             
         except Exception as e:
@@ -879,7 +950,15 @@ class AllReadyManager:
             if not self._download_models():
                 return 1
         
-        # 5. 最终验证
+        # 5. 检查并询问可选模型（即使必需模型已安装）
+        if not self.args.tts_only:
+            asr_config = self.config_loader.get_config("asr")
+            engine = asr_config.get("engine", "dummy")
+            if engine == "funasr":
+                cache_dir = self.config_loader.get_data_dir("asr")
+                self._ask_download_optional_models(cache_dir)
+        
+        # 6. 最终验证
         print_header("最终验证")
         self._check_models()
         
@@ -982,6 +1061,92 @@ class AllReadyManager:
         
         return success
     
+    def _ask_download_optional_models(self, cache_dir: Path) -> bool:
+        """
+        询问用户是否下载可选模型
+        
+        Returns:
+            是否下载了任何可选模型
+        """
+        try:
+            from funasr import AutoModel
+        except ImportError:
+            return False
+        
+        # 设置 ModelScope 缓存目录（重要！）
+        os.environ["MODELSCOPE_CACHE"] = str(cache_dir)
+        
+        print_info("")
+        print_info("─" * 60)
+        print_header("可选模型检查")
+        
+        # 定义可选模型
+        optional_models = [
+            {
+                "name": "情感识别模型",
+                "id": "emotion2vec_plus_large",
+                "description": "识别语音中的情感倾向（开心/愤怒/中性/悲伤等）",
+                "size": "~1.8GB",
+                "path": cache_dir / "models" / "iic" / "emotion2vec_plus_large",
+                "config_key": "ser_enabled"
+            },
+            {
+                "name": "说话人辨别模型",
+                "id": "iic/speech_campplus_sv_zh-cn_16k-common",
+                "description": "区分音频中的不同说话人并标注归属",
+                "size": "~200MB",
+                "path": cache_dir / "models" / "iic" / "speech_campplus_sv_zh-cn_16k-common",
+                "config_key": "speaker_enabled"
+            }
+        ]
+        
+        downloaded_any = False
+        
+        for model_info in optional_models:
+            model_name = model_info["name"]
+            model_id = model_info["id"]
+            model_path = model_info["path"]
+            
+            # 检查模型是否已存在
+            if model_path.exists():
+                print_success(f"✓ {model_name} 已安装")
+                continue
+            
+            # 显示模型信息
+            print_info("")
+            print_warning(f"⚠️  {model_name} 未安装")
+            print_info(f"  模型 ID: {model_id}")
+            print_info(f"  功能: {model_info['description']}")
+            print_info(f"  大小: {model_info['size']}")
+            
+            if model_info['size'].startswith('~1.8GB'):
+                print_warning(f"  ⚠️  该模型较大，下载可能需要较长时间")
+            
+            print_info("")
+            
+            # 询问用户是否下载
+            try:
+                response = input(f"是否下载 {model_name}？(y/N): ").strip().lower()
+                if response not in ['y', 'yes', '是']:
+                    print_info(f"已跳过 {model_name}")
+                    continue
+            except (EOFError, KeyboardInterrupt):
+                print_info(f"\n已跳过 {model_name}")
+                continue
+            
+            # 下载模型
+            print_step(f"正在下载 {model_name}...")
+            try:
+                model = AutoModel(model=model_id, device="cpu")
+                print_success(f"✅ {model_name} 下载完成")
+                downloaded_any = True
+                del model
+            except Exception as e:
+                print_error(f"❌ {model_name} 下载失败: {e}")
+        
+        print_info("")
+        return downloaded_any
+    
     def _download_optional_models(self) -> int:
         """下载可选的 FunASR 模型"""
         print_header("FunASR 可选模型下载")
@@ -1004,65 +1169,127 @@ class AllReadyManager:
         
         print("")
         
-        # 下载情感识别模型
+        # 定义可选模型信息
+        optional_models = []
+        
         if self.args.download_emotion:
-            print_step("下载情感识别模型 (emotion2vec_plus_large)...")
-            print_warning("⚠️  该模型约 1.8GB，下载可能需要较长时间")
-            print("")
+            optional_models.append({
+                "name": "情感识别模型",
+                "id": "emotion2vec_plus_large",
+                "description": "识别语音中的情感倾向（开心/愤怒/中性/悲伤等）",
+                "size": "~1.8GB",
+                "path": asr_cache_dir / "models" / "iic" / "emotion2vec_plus_large",
+                "config_key": "ser_enabled"
+            })
+        
+        if self.args.download_speaker:
+            optional_models.append({
+                "name": "说话人辨别模型",
+                "id": "iic/speech_campplus_sv_zh-cn_16k-common",
+                "description": "区分音频中的不同说话人并标注归属",
+                "size": "~200MB",
+                "path": asr_cache_dir / "models" / "iic" / "speech_campplus_sv_zh-cn_16k-common",
+                "config_key": "speaker_enabled"
+            })
+        
+        if not optional_models:
+            print_warning("未指定要下载的可选模型")
+            print_info("使用方法:")
+            print_info("  --download-emotion  下载情感识别模型")
+            print_info("  --download-speaker  下载说话人辨别模型")
+            return 0
+        
+        downloaded_models = []
+        skipped_models = []
+        failed_models = []
+        
+        # 逐个处理模型
+        for model_info in optional_models:
+            model_name = model_info["name"]
+            model_id = model_info["id"]
+            model_path = model_info["path"]
             
+            # 检查模型是否已存在
+            if model_path.exists():
+                print_success(f"✓ {model_name} 已安装")
+                downloaded_models.append(model_info)
+                continue
+            
+            # 显示模型信息
+            print_info("─" * 60)
+            print_warning(f"⚠️  {model_name} 未安装")
+            print_info(f"  模型 ID: {model_id}")
+            print_info(f"  功能: {model_info['description']}")
+            print_info(f"  大小: {model_info['size']}")
+            
+            if model_info['size'].startswith('~1.8GB'):
+                print_warning(f"  ⚠️  该模型较大，下载可能需要较长时间")
+            
+            print_info("")
+            
+            # 询问用户是否下载
             try:
-                response = input("是否继续下载？(y/N): ").strip().lower()
+                response = input(f"是否下载 {model_name}？(y/N): ").strip().lower()
                 if response not in ['y', 'yes', '是']:
-                    print_info("已取消下载")
-                    return 0
+                    print_info(f"已跳过 {model_name}")
+                    skipped_models.append(model_name)
+                    print_info("")
+                    continue
             except (EOFError, KeyboardInterrupt):
-                print_info("\n已取消下载")
-                return 0
+                print_info(f"\n已跳过 {model_name}")
+                skipped_models.append(model_name)
+                print_info("")
+                continue
             
+            # 下载模型
+            print_step(f"正在下载 {model_name}...")
             try:
-                print_info("正在下载...")
-                model = AutoModel(model="emotion2vec_plus_large", device="cpu")
-                print_success("✅ 情感识别模型下载完成")
+                model = AutoModel(model=model_id, device="cpu")
+                print_success(f"✅ {model_name} 下载完成")
+                downloaded_models.append(model_info)
                 del model
             except Exception as e:
-                print_error(f"❌ 下载失败: {e}")
-                return 1
-        
-        # 下载说话人辨别模型
-        if self.args.download_speaker:
-            print_step("下载说话人辨别模型 (speech_campplus_sv_zh-cn_16k-common)...")
-            print("")
+                print_error(f"❌ {model_name} 下载失败: {e}")
+                failed_models.append((model_name, str(e)))
             
-            try:
-                response = input("是否继续下载？(y/N): ").strip().lower()
-                if response not in ['y', 'yes', '是']:
-                    print_info("已取消下载")
-                    return 0
-            except (EOFError, KeyboardInterrupt):
-                print_info("\n已取消下载")
-                return 0
+            print_info("")
+        
+        # 显示下载总结
+        print_info("─" * 60)
+        print_header("下载总结")
+        
+        if downloaded_models:
+            print_success(f"✅ 已安装的模型 ({len(downloaded_models)}):")
+            for model_info in downloaded_models:
+                print_success(f"  ✓ {model_info['name']}")
+            print_info("")
             
-            try:
-                print_info("正在下载...")
-                model = AutoModel(model="iic/speech_campplus_sv_zh-cn_16k-common", device="cpu")
-                print_success("✅ 说话人辨别模型下载完成")
-                del model
-            except Exception as e:
-                print_error(f"❌ 下载失败: {e}")
-                return 1
+            print_info("下一步：")
+            print_info("  1. 在 backend/config/core_config.json 中启用相应功能:")
+            for model_info in downloaded_models:
+                print_info(f"     - {model_info['config_key']} = true  ({model_info['name']})")
+            print_info("  2. 运行测试: python backend/test/test_funasr_engine.py")
         
-        print("")
-        print_success("🎉 可选模型下载完成！")
-        print_info("")
-        print_info("下一步：")
-        print_info("  1. 在配置文件中启用相应功能:")
-        if self.args.download_emotion:
-            print_info("     - ser_enabled = true  (情感识别)")
-        if self.args.download_speaker:
-            print_info("     - speaker_enabled = true  (说话人辨别)")
-        print_info("  2. 运行测试: python backend/test/test_funasr_engine.py")
+        if skipped_models:
+            print_info("")
+            print_warning(f"⏭️  跳过的模型 ({len(skipped_models)}):")
+            for model_name in skipped_models:
+                print_warning(f"  - {model_name}")
         
-        return 0
+        if failed_models:
+            print_info("")
+            print_error(f"❌ 下载失败的模型 ({len(failed_models)}):")
+            for model_name, error in failed_models:
+                print_error(f"  ✗ {model_name}: {error}")
+        
+        if downloaded_models and not failed_models:
+            print_info("")
+            print_success("🎉 可选模型下载完成！")
+            return 0
+        elif failed_models:
+            return 1
+        else:
+            return 0
 
 
 # =============================================================================
