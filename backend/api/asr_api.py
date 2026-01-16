@@ -13,7 +13,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
 
-from backend.config import settings
+from backend.config import settings, paths
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,15 @@ async def check_asr_status():
             }
         
         # 检查模型是否存在
-        model_cache_dir = Path(asr_config.model_cache_dir) if asr_config.model_cache_dir else None
+        # 将相对路径转换为绝对路径（相对于项目根目录的父目录）
+        if asr_config.model_cache_dir:
+            model_cache_dir = Path(asr_config.model_cache_dir)
+            if not model_cache_dir.is_absolute():
+                # 相对路径，相对于项目根目录的父目录（01-python/）
+                project_parent = paths.PROJECT_ROOT.parent
+                model_cache_dir = (project_parent / model_cache_dir).resolve()
+        else:
+            model_cache_dir = None
         
         model_status = {}
         if model_cache_dir and model_cache_dir.exists():
@@ -111,12 +119,20 @@ async def test_asr_upload(
         if not asr_config.enabled:
             raise HTTPException(status_code=503, detail="ASR 服务未启用")
         
-        # 检查文件类型
-        allowed_types = ["audio/wav", "audio/mpeg", "audio/mp3", "audio/x-m4a", "audio/mp4"]
+        # 检查文件类型（主要支持 WAV 格式，FunASR 可以处理其他格式但 WAV 最稳定）
+        allowed_types = [
+            "audio/wav",   # WAV 格式（推荐）
+            "audio/x-wav",
+            "audio/wave",
+            "audio/mpeg",  # MP3
+            "audio/mp3",
+            "audio/x-m4a", # M4A
+            "audio/mp4"
+        ]
         if file.content_type not in allowed_types:
             raise HTTPException(
                 status_code=400,
-                detail=f"不支持的文件类型: {file.content_type}，支持的类型: {', '.join(allowed_types)}"
+                detail=f"不支持的文件类型: {file.content_type}，支持的类型: WAV (推荐), MP3, M4A, MP4"
             )
         
         # 保存临时文件
@@ -129,39 +145,76 @@ async def test_asr_upload(
             # 使用 ASR 引擎进行识别
             from backend.utils.asr.funasr_engine import FunASREngine
             
+            # 将相对路径转换为绝对路径
+            model_cache_dir = asr_config.model_cache_dir
+            if model_cache_dir:
+                model_cache_dir_path = Path(model_cache_dir)
+                if not model_cache_dir_path.is_absolute():
+                    project_parent = paths.PROJECT_ROOT.parent
+                    model_cache_dir = str((project_parent / model_cache_dir_path).resolve())
+            
             # 创建 ASR 引擎实例
             engine = FunASREngine(
-                model_cache_dir=asr_config.model_cache_dir,
+                model_cache_dir=model_cache_dir,
                 language=asr_config.language,
                 vad_enabled=asr_config.vad_enabled,
                 lid_enabled=asr_config.lid_enabled
             )
             
             # 初始化引擎
-            await asyncio.to_thread(engine.initialize)
-            
-            # 识别音频
-            result = await asyncio.to_thread(engine.transcribe_file, temp_file_path)
-            
-            if result and result.get("text"):
-                return ASRTestResponse(
-                    success=True,
-                    text=result["text"],
-                    language=result.get("language"),
-                    confidence=result.get("confidence"),
-                    duration=result.get("duration"),
-                    message="识别成功"
+            init_success = await engine.initialize()
+            if not init_success:
+                raise HTTPException(
+                    status_code=500,
+                    detail="ASR 引擎初始化失败，请检查模型文件是否存在"
                 )
-            else:
-                return ASRTestResponse(
-                    success=False,
-                    message="未识别到有效语音"
-                )
+            
+            # 识别音频文件
+            result = await engine.recognize_file(temp_file_path)
+            
+            # 解析识别结果
+            if result and "lid" in result:
+                lid_data = result["lid"]
+                if lid_data.get("status") == "success":
+                    data = lid_data.get("data", {})
+                    text = data.get("text", "")
+                    language = data.get("language", "unknown")
+                    
+                    if text:
+                        # 计算音频时长
+                        import wave
+                        try:
+                            with wave.open(temp_file_path, 'rb') as wav_file:
+                                frames = wav_file.getnframes()
+                                rate = wav_file.getframerate()
+                                duration = frames / float(rate)
+                        except:
+                            duration = 0.0
+                        
+                        return ASRTestResponse(
+                            success=True,
+                            text=text,
+                            language=language,
+                            confidence=1.0,  # FunASR 不提供置信度
+                            duration=duration,
+                            message="识别成功"
+                        )
+            
+            return ASRTestResponse(
+                success=False,
+                message="未识别到有效语音"
+            )
         
         finally:
             # 清理临时文件
             try:
                 Path(temp_file_path).unlink()
+            except:
+                pass
+            
+            # 清理引擎
+            try:
+                await engine.shutdown()
             except:
                 pass
     
@@ -196,12 +249,20 @@ async def list_asr_models():
     """
     try:
         asr_config = settings.asr
-        model_cache_dir = Path(asr_config.model_cache_dir) if asr_config.model_cache_dir else None
+        
+        # 将相对路径转换为绝对路径
+        if asr_config.model_cache_dir:
+            model_cache_dir = Path(asr_config.model_cache_dir)
+            if not model_cache_dir.is_absolute():
+                project_parent = paths.PROJECT_ROOT.parent
+                model_cache_dir = (project_parent / model_cache_dir).resolve()
+        else:
+            model_cache_dir = None
         
         if not model_cache_dir or not model_cache_dir.exists():
             return {
                 "models": [],
-                "message": "模型目录不存在"
+                "message": f"模型目录不存在: {model_cache_dir}"
             }
         
         # 扫描模型目录

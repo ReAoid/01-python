@@ -92,9 +92,14 @@ class ASRConfig(BaseModel):
     engine: str = "dummy"
     model: str = "base"
     model_path: Optional[str] = None
+    model_cache_dir: Optional[str] = None  # 模型缓存目录
     device: str = "cpu"
     language: str = "zh"
     min_audio_length: float = 1.0
+    vad_enabled: bool = True  # VAD 启用开关
+    lid_enabled: bool = True  # 语言识别启用开关
+    ser_enabled: bool = False  # 情感识别启用开关
+    speaker_enabled: bool = False  # 说话人辨别启用开关
     audio: ASRAudioConfig = Field(default_factory=ASRAudioConfig)
     vad: ASRVADConfig = Field(default_factory=ASRVADConfig)
     preprocessing: ASRPreprocessingConfig = Field(default_factory=ASRPreprocessingConfig)

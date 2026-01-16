@@ -100,11 +100,14 @@ async def test_tts_synthesis(request: TTSTestRequest):
     """
     测试 TTS 语音合成
     
+    注意：此端点会尝试初始化角色（如果尚未初始化），然后进行语音合成。
+    如果角色已经初始化，则直接合成。
+    
     Args:
         request: TTS 测试请求
     
     Returns:
-        合成的音频数据（WAV 格式）
+        合成的音频数据（PCM 格式，32kHz, mono, 16-bit）
     """
     try:
         tts_config = settings.tts
@@ -122,40 +125,124 @@ async def test_tts_synthesis(request: TTSTestRequest):
         
         # 调用 TTS 服务
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                # 根据 Genie TTS 的 API 格式构建请求
-                # 注意：这里需要根据实际的 Genie TTS API 调整
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                # 步骤 1: 尝试直接合成（如果角色已加载）
                 tts_request_data = {
+                    "character_name": character,
                     "text": request.text,
-                    "character": character,
-                    "language": language
+                    "split_sentence": True
                 }
                 
-                # 假设 Genie TTS 有 /synthesize 端点
                 response = await client.post(
-                    f"{server_url}/synthesize",
+                    f"{server_url}/tts",
                     json=tts_request_data
                 )
                 
+                # 如果角色未加载（404），则先初始化角色
+                if response.status_code == 404:
+                    logger.info(f"角色 '{character}' 未加载，正在初始化...")
+                    
+                    # 步骤 2: 加载角色
+                    from backend.config import paths
+                    model_dir = paths.TTS_DIR / "GenieData" / "CharacterModels" / "v2ProPlus" / character / "tts_models"
+                    
+                    if not model_dir.exists():
+                        raise HTTPException(
+                            status_code=404,
+                            detail=f"角色模型目录不存在: {model_dir}"
+                        )
+                    
+                    load_response = await client.post(
+                        f"{server_url}/load_character",
+                        json={
+                            "character_name": character,
+                            "onnx_model_dir": str(model_dir),
+                            "language": language
+                        },
+                        timeout=30.0
+                    )
+                    
+                    if load_response.status_code != 200:
+                        raise HTTPException(
+                            status_code=load_response.status_code,
+                            detail=f"加载角色失败: {load_response.text}"
+                        )
+                    
+                    logger.info(f"✓ 角色 '{character}' 加载成功")
+                    
+                    # 步骤 3: 设置参考音频
+                    ref_audio_dir = paths.TTS_DIR / "GenieData" / "CharacterModels" / "v2ProPlus" / character
+                    ref_audio_json = ref_audio_dir / "prompt_wav.json"
+                    
+                    if ref_audio_json.exists():
+                        import json
+                        with open(ref_audio_json, 'r', encoding='utf-8') as f:
+                            ref_data = json.load(f)
+                        
+                        # 获取第一个参考音频
+                        if ref_data:
+                            first_key = next(iter(ref_data.keys()))
+                            ref_info = ref_data[first_key]
+                            # 参考音频在 prompt_wav 子目录中
+                            ref_audio_filename = ref_info.get("wav", ref_info.get("path", first_key))
+                            ref_audio_path = ref_audio_dir / "prompt_wav" / ref_audio_filename
+                            ref_audio_text = ref_info.get("text", "")
+                            
+                            if ref_audio_path.exists():
+                                set_ref_response = await client.post(
+                                    f"{server_url}/set_reference_audio",
+                                    json={
+                                        "character_name": character,
+                                        "audio_path": str(ref_audio_path),
+                                        "audio_text": ref_audio_text,
+                                        "language": language
+                                    },
+                                    timeout=30.0
+                                )
+                                
+                                if set_ref_response.status_code != 200:
+                                    logger.warning(f"设置参考音频失败: {set_ref_response.text}")
+                                else:
+                                    logger.info(f"✓ 参考音频设置成功")
+                            else:
+                                logger.warning(f"参考音频文件不存在: {ref_audio_path}")
+                    
+                    # 步骤 4: 重新尝试合成
+                    response = await client.post(
+                        f"{server_url}/tts",
+                        json=tts_request_data
+                    )
+                
+                # 检查最终响应
                 if response.status_code == 200:
-                    # 返回音频数据
+                    # 返回音频数据（PCM 格式）
                     return Response(
                         content=response.content,
-                        media_type="audio/wav",
+                        media_type="audio/pcm",
                         headers={
-                            "Content-Disposition": f"attachment; filename=tts_test_{character}.wav"
+                            "Content-Disposition": f"attachment; filename=tts_test_{character}.pcm",
+                            "X-Sample-Rate": "32000",
+                            "X-Channels": "1",
+                            "X-Sample-Width": "2"
                         }
                     )
                 else:
+                    error_detail = response.text
+                    try:
+                        error_json = response.json()
+                        error_detail = error_json.get("detail", error_detail)
+                    except:
+                        pass
+                    
                     raise HTTPException(
                         status_code=response.status_code,
-                        detail=f"TTS 服务返回错误: {response.text}"
+                        detail=f"TTS 服务返回错误: {error_detail}"
                     )
         
         except httpx.ConnectError:
             raise HTTPException(
                 status_code=503,
-                detail="无法连接到 TTS 服务，请确保服务已启动"
+                detail="无法连接到 TTS 服务，请确保服务已启动 (python backend/genie_server.py)"
             )
         except httpx.TimeoutException:
             raise HTTPException(

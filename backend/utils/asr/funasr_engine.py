@@ -32,49 +32,54 @@ class FunASREngine(BaseASREngine):
     4. 说话人辨别 - 区分不同说话人
     """
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, 
+                 model_cache_dir: Optional[str] = None,
+                 language: str = "auto",
+                 vad_enabled: bool = True,
+                 lid_enabled: bool = True,
+                 ser_enabled: bool = False,
+                 speaker_enabled: bool = False,
+                 device: str = "cpu",
+                 sample_rate: int = 16000,
+                 channels: int = 1,
+                 sample_width: int = 2):
         """
         初始化 FunASR 引擎
         
         Args:
-            config: 配置字典，包含以下参数：
-                - sample_rate: 采样率（默认 16000）
-                - channels: 声道数（默认 1）
-                - sample_width: 采样位深（默认 2，即 16-bit）
-                - device: 设备类型 "cpu" 或 "cuda:0"（默认 "cpu"）
-                - language: 语言设置 "auto", "zh", "en" 等（默认 "auto"）
-                - min_audio_length: 最小音频长度（秒，默认 1.0）
-                - vad_enabled: 是否启用 VAD（默认 True）
-                - lid_enabled: 是否启用语言识别（默认 True）
-                - ser_enabled: 是否启用情感识别（默认 False）
-                - speaker_enabled: 是否启用说话人辨别（默认 False）
-                - model_cache_dir: 模型缓存目录（可选）
-                - output_dir: 输出目录（默认 "./funasr_output"）
+            model_cache_dir: 模型缓存目录（可选）
+            language: 语言设置 "auto", "zh", "en" 等（默认 "auto"）
+            vad_enabled: 是否启用 VAD（默认 True）
+            lid_enabled: 是否启用语言识别（默认 True）
+            ser_enabled: 是否启用情感识别（默认 False）
+            speaker_enabled: 是否启用说话人辨别（默认 False）
+            device: 设备类型 "cpu" 或 "cuda:0"（默认 "cpu"）
+            sample_rate: 采样率（默认 16000）
+            channels: 声道数（默认 1）
+            sample_width: 采样位深（默认 2，即 16-bit）
         """
-        self.config = config
-        
         # 音频参数
-        self.sample_rate: int = config.get("sample_rate", 16000)
-        self.channels: int = config.get("channels", 1)
-        self.sample_width: int = config.get("sample_width", 2)
-        self.min_audio_length: float = config.get("min_audio_length", 1.0)
+        self.sample_rate: int = sample_rate
+        self.channels: int = channels
+        self.sample_width: int = sample_width
+        self.min_audio_length: float = 1.0
         
         # 设备配置
-        self.device: str = config.get("device", "cpu")
-        self.language: str = config.get("language", "auto")
+        self.device: str = device
+        self.language: str = language
         
         # 功能开关
-        self.vad_enabled: bool = config.get("vad_enabled", True)
-        self.lid_enabled: bool = config.get("lid_enabled", True)
-        self.ser_enabled: bool = config.get("ser_enabled", False)
-        self.speaker_enabled: bool = config.get("speaker_enabled", False)
+        self.vad_enabled: bool = vad_enabled
+        self.lid_enabled: bool = lid_enabled
+        self.ser_enabled: bool = ser_enabled
+        self.speaker_enabled: bool = speaker_enabled
         
         # 路径配置
-        self.output_dir: str = config.get("output_dir", "./funasr_output")
+        self.output_dir: str = "./funasr_output"
         os.makedirs(self.output_dir, exist_ok=True)
         
         # 模型缓存配置 - 统一使用 backend/data/asr 目录
-        model_cache_dir = config.get("model_cache_dir")
+        self.model_cache_dir = model_cache_dir
         if model_cache_dir:
             os.environ["MODELSCOPE_CACHE"] = str(model_cache_dir)
             logger.info(f"设置模型缓存目录: {model_cache_dir}")
@@ -112,10 +117,9 @@ class FunASREngine(BaseASREngine):
             logger.info(f"设备: {self.device}, 语言: {self.language}")
             
             # 检查模型缓存目录
-            model_cache_dir = self.config.get("model_cache_dir")
-            if model_cache_dir and not self._check_models_exist(model_cache_dir):
+            if self.model_cache_dir and not self._check_models_exist(self.model_cache_dir):
                 logger.error(f"❌ 模型文件未找到，请先运行 python backend/all_ready.py 下载模型")
-                logger.error(f"预期模型目录: {model_cache_dir}")
+                logger.error(f"预期模型目录: {self.model_cache_dir}")
                 return False
             
             # 1. 加载 VAD 模型
@@ -144,39 +148,41 @@ class FunASREngine(BaseASREngine):
             # 3. 加载情感识别模型（可选）
             if self.ser_enabled:
                 # 检查情感识别模型是否存在
-                ser_model_path = Path(model_cache_dir) / "models" / "iic" / "emotion2vec_plus_large"
-                if not ser_model_path.exists():
-                    logger.warning("❌ 情感识别模型未找到，已禁用情感识别功能")
-                    logger.warning("如需使用情感识别，请运行: python backend/all_ready.py --download-emotion")
-                    self.ser_enabled = False
-                else:
-                    logger.info("加载情感识别模型 (emotion2vec_plus_large)...")
-                    start_time = time.time()
-                    self.ser_model = AutoModel(
-                        model="emotion2vec_plus_large",
-                        device=self.device,
-                        disable_update=True
-                    )
-                    logger.info(f"✅ 情感识别模型加载完成 (耗时 {time.time() - start_time:.2f}秒)")
+                if self.model_cache_dir:
+                    ser_model_path = Path(self.model_cache_dir) / "models" / "iic" / "emotion2vec_plus_large"
+                    if not ser_model_path.exists():
+                        logger.warning("❌ 情感识别模型未找到，已禁用情感识别功能")
+                        logger.warning("如需使用情感识别，请运行: python backend/all_ready.py --download-emotion")
+                        self.ser_enabled = False
+                    else:
+                        logger.info("加载情感识别模型 (emotion2vec_plus_large)...")
+                        start_time = time.time()
+                        self.ser_model = AutoModel(
+                            model="emotion2vec_plus_large",
+                            device=self.device,
+                            disable_update=True
+                        )
+                        logger.info(f"✅ 情感识别模型加载完成 (耗时 {time.time() - start_time:.2f}秒)")
             
             # 4. 加载说话人辨别模型（可选）
             if self.speaker_enabled:
                 # 检查说话人辨别模型是否存在
-                speaker_model_path = Path(model_cache_dir) / "models" / "iic" / "speech_campplus_sv_zh-cn_16k-common"
-                if not speaker_model_path.exists():
-                    logger.warning("❌ 说话人辨别模型未找到，已禁用说话人辨别功能")
-                    logger.warning("如需使用说话人辨别，请运行: python backend/all_ready.py --download-speaker")
-                    self.speaker_enabled = False
-                else:
-                    logger.info("加载说话人辨别模型 (speech_campplus_sv_zh-cn_16k-common)...")
-                    start_time = time.time()
-                    self.speaker_model = AutoModel(
-                        model="iic/speech_campplus_sv_zh-cn_16k-common",
-                        trust_remote_code=True,
-                        device=self.device,
-                        disable_update=True
-                    )
-                    logger.info(f"✅ 说话人辨别模型加载完成 (耗时 {time.time() - start_time:.2f}秒)")
+                if self.model_cache_dir:
+                    speaker_model_path = Path(self.model_cache_dir) / "models" / "iic" / "speech_campplus_sv_zh-cn_16k-common"
+                    if not speaker_model_path.exists():
+                        logger.warning("❌ 说话人辨别模型未找到，已禁用说话人辨别功能")
+                        logger.warning("如需使用说话人辨别，请运行: python backend/all_ready.py --download-speaker")
+                        self.speaker_enabled = False
+                    else:
+                        logger.info("加载说话人辨别模型 (speech_campplus_sv_zh-cn_16k-common)...")
+                        start_time = time.time()
+                        self.speaker_model = AutoModel(
+                            model="iic/speech_campplus_sv_zh-cn_16k-common",
+                            trust_remote_code=True,
+                            device=self.device,
+                            disable_update=True
+                        )
+                        logger.info(f"✅ 说话人辨别模型加载完成 (耗时 {time.time() - start_time:.2f}秒)")
             
             logger.info("✅ FunASR 引擎初始化完成")
             return True
