@@ -1056,13 +1056,6 @@ onUnmounted(() => {
             >
               <i class="fas fa-sync"></i>
             </button>
-
-            <button class="w-9 h-9 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 transition-colors">
-              <i class="fas fa-search"></i>
-            </button>
-            <button class="w-9 h-9 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 transition-colors">
-              <i class="fas fa-ellipsis-v"></i>
-            </button>
           </div>
         </div>
 

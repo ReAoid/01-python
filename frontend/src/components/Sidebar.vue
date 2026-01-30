@@ -1,5 +1,5 @@
 <script setup>
-import { defineEmits } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 
 /**
  * 侧边栏组件 (Sidebar)
@@ -9,7 +9,7 @@ import { defineEmits } from 'vue'
  * 主要功能:
  * 1. 标签页切换: 支持聊天、历史、配置、日志四个功能标签。
  * 2. 状态通知: 通过 emit 通知父组件切换当前激活的标签页。
- * 3. 用户信息: 底部展示当前用户信息。
+ * 3. 用户信息: 底部展示当前用户信息（从配置读取）。
  */
 
 // 接收父组件传递的当前激活标签
@@ -31,10 +31,62 @@ const tabs = [
   { id: 'logs', label: '日志', icon: 'fas fa-file-alt' }
 ]
 
+// 用户配置
+const userProfile = ref({
+  name: 'Guest',
+  nickname: 'User',
+  age: null,
+  gender: null,
+  relationship_with_ai: null
+})
+
 // 切换标签页
 const switchTab = (tabId) => {
   emit('tab-change', tabId)
 }
+
+// 加载用户配置
+const loadUserProfile = async () => {
+  try {
+    const response = await fetch('/api/config/current')
+    if (response.ok) {
+      const data = await response.json()
+      if (data.user_profile) {
+        userProfile.value = data.user_profile
+      }
+      console.log('[Sidebar] Loaded user profile:', data.user_profile)
+    }
+  } catch (error) {
+    console.error('[Sidebar] Failed to load user profile:', error)
+  }
+}
+
+// 计算显示名称（优先使用昵称，否则使用姓名）
+const displayName = computed(() => {
+  return userProfile.value.nickname || userProfile.value.name || 'Guest User'
+})
+
+// 计算显示的用户信息（关系或年龄+性别）
+const displayInfo = computed(() => {
+  if (userProfile.value.relationship_with_ai) {
+    return userProfile.value.relationship_with_ai
+  }
+  const parts = []
+  if (userProfile.value.age) parts.push(`${userProfile.value.age}岁`)
+  if (userProfile.value.gender) parts.push(userProfile.value.gender)
+  return parts.length > 0 ? parts.join(' · ') : 'Free Plan'
+})
+
+// 生成头像 URL（基于名称）
+const avatarUrl = computed(() => {
+  const name = encodeURIComponent(displayName.value)
+  return `https://ui-avatars.com/api/?name=${name}&background=0D8ABC&color=fff`
+})
+
+// 组件挂载时加载用户配置
+onMounted(() => {
+  loadUserProfile()
+})
 </script>
 
 <template>
@@ -90,14 +142,13 @@ const switchTab = (tabId) => {
 
     <!-- 底部用户信息区域 -->
     <div class="p-4 border-t border-gray-200 bg-white">
-      <button class="w-full flex items-center gap-3 p-2 hover:bg-gray-50 rounded-xl transition-colors">
-        <img src="https://ui-avatars.com/api/?name=User&background=0D8ABC&color=fff" class="w-9 h-9 rounded-full shadow-sm" alt="User">
-        <div class="flex-1 text-left">
-          <div class="text-sm font-semibold text-gray-900">Guest User</div>
-          <div class="text-xs text-gray-500">Free Plan</div>
+      <div class="w-full flex items-center gap-3 p-2 bg-gray-50 rounded-xl">
+        <img :src="avatarUrl" class="w-9 h-9 rounded-full shadow-sm" :alt="displayName">
+        <div class="flex-1 text-left min-w-0">
+          <div class="text-sm font-semibold text-gray-900 truncate">{{ displayName }}</div>
+          <div class="text-xs text-gray-500 truncate">{{ displayInfo }}</div>
         </div>
-        <i class="fas fa-cog text-gray-400 hover:text-gray-600"></i>
-      </button>
+      </div>
     </div>
   </div>
 </template>
