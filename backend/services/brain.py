@@ -466,7 +466,10 @@ class SessionManager:
         
         logger.info(f"📝 ASR转录结果: {text}")
         
-        # 将转录的文本作为用户输入处理
+        # 1. 先将ASR识别的文字发送到前端，显示为用户消息
+        await self._send_user_message_to_frontend(text)
+        
+        # 2. 将转录的文本作为用户输入处理
         await self._handle_user_input(text)
     
     async def _handle_vad_trigger(self):
@@ -698,6 +701,23 @@ class SessionManager:
                 await self.websocket.send_text(json.dumps({"type": "text_stream", "content": text}))
             except Exception as e:
                 logger.error(f"Failed to send text to frontend: {e}")
+    
+    async def _send_user_message_to_frontend(self, text: str):
+        """
+        发送用户消息到前端 WebSocket（用于显示ASR识别结果）。
+        
+        Args:
+            text: 用户消息内容（ASR识别的文字）
+        """
+        if self.websocket:
+            try:
+                # 发送用户消息，前端会将其显示为用户气泡
+                await self.websocket.send_text(json.dumps({
+                    "type": "user_message",
+                    "content": text
+                }))
+            except Exception as e:
+                logger.error(f"Failed to send user message to frontend: {e}")
 
     async def _send_audio_to_frontend(self, audio_data: bytes):
         """

@@ -891,6 +891,27 @@ const handleSocketMessage = async (message) => {
       });
     }
     await scrollToBottom();
+  } else if (message.type === 'user_message') {
+    // 处理ASR识别的用户消息
+    const content = message.content;
+    
+    // 添加用户消息气泡
+    messages.value.push({
+      id: Date.now(),
+      role: 'user',
+      content: content,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      type: 'text'
+    });
+    
+    // 标记上一条 AI 消息为已完成
+    const prevMessage = messages.value[messages.value.length - 2];
+    if (prevMessage && prevMessage.role === 'ai') {
+      prevMessage.isComplete = true;
+    }
+    
+    await scrollToBottom();
+    console.log('[ASR] User message displayed:', content);
   } else if (message.type === 'pong') {
     // 心跳回应
   } else if (message.type === 'state_change') {
