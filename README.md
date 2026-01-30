@@ -80,6 +80,48 @@ cd frontend
 npm install
 ```
 
+## Live2D部署
+
+### 1. 安装依赖
+Live2D 依赖已包含在 `package.json` 中，执行 `npm install` 时会自动安装：
+- `pixi.js@7` - 2D渲染引擎
+- `pixi-live2d-display` - Live2D 模型加载和显示库
+
+### 2. 准备模型文件
+将 Live2D 模型文件放置到 `frontend/public/live2d/` 目录下，例如：
+```
+frontend/public/live2d/
+└── Pio/
+    ├── model.json          # 模型配置文件
+    ├── model.moc           # 模型数据文件
+    ├── textures/           # 贴图文件夹
+    │   └── *.png
+    └── motions/            # 动作文件夹
+        └── *.mtn
+```
+
+### 3. 使用方法
+在 Vue 组件中引入 Live2D 组件：
+```vue
+<template>
+  <Live2DCharacter 
+    model-path="/live2d/Pio/model.json"
+    :width="300"
+    :height="400"
+  />
+</template>
+
+<script setup>
+import Live2DCharacter from './components/Live2DCharacter.vue'
+</script>
+```
+
+### 4. 测试 Live2D
+访问测试页面验证模型加载：
+```
+http://localhost:5173/test-live2d.html
+```
+
 ## TTS部署
 
 ### 方式一：一键自动安装（推荐）
