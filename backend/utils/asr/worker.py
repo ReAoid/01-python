@@ -99,23 +99,31 @@ async def process_audio_chunk(engine: BaseASREngine, audio_data: bytes, response
     """
     处理单个音频块并返回识别结果。
     
+    优化策略：
+    1. 先进行VAD检测，只有检测到语音活动时才进行转录
+    2. 这样可以减少不必要的ASR计算，提高效率
+    3. VAD触发事件用于打断AI语音输出
+    
     Args:
         engine: ASR 引擎实例
         audio_data: PCM 音频数据
         response_queue: 响应队列
     """
     try:
-        # 1. 进行语音识别
+        # 1. 先检测 VAD（快速检测语音活动）
+        is_speech = await engine.detect_vad(audio_data)
+        if is_speech:
+            # 发送 VAD 触发事件（用于打断AI语音）
+            response_queue.put(("vad_trigger", True))
+            logger.debug("VAD检测到语音活动，触发打断事件")
+        
+        # 2. 进行语音识别（process_audio内部会累积音频直到达到最小长度）
+        # 注意：即使VAD未检测到语音，也要调用process_audio来累积缓冲区
         text = await engine.process_audio(audio_data)
         if text:
             # 发送转录结果
             response_queue.put(("transcript", text))
-        
-        # 2. 检测 VAD（用于打断）
-        is_speech = await engine.detect_vad(audio_data)
-        if is_speech:
-            # 发送 VAD 触发事件
-            response_queue.put(("vad_trigger", True))
+            logger.info(f"ASR转录完成: {text}")
     
     except Exception as e:
         logger.error(f"处理音频时发生异常: {e}", exc_info=True)

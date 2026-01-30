@@ -331,7 +331,29 @@ class SessionManager:
             data = message.get("data", {})
             if "input_mode" in data:
                 try:
-                    self.input_mode = InputMode(data["input_mode"])
+                    new_input_mode = InputMode(data["input_mode"])
+                    
+                    # 处理ASR持续录音模式的启动和停止
+                    if new_input_mode == InputMode.REALTIME_AUDIO and self.input_mode != InputMode.REALTIME_AUDIO:
+                        # 切换到实时音频模式，启动ASR服务
+                        if not self.asr.running:
+                            logger.info("Switching to Realtime Audio mode: Starting ASR service...")
+                            success = await self.asr.start(
+                                on_transcript=self._handle_asr_transcript,
+                                on_vad_trigger=self._handle_vad_trigger
+                            )
+                            if success:
+                                logger.info("✅ ASR 服务启动成功（持续录音模式）")
+                            else:
+                                await self._send_text_to_frontend("【系统提示】语音识别服务启动失败。")
+                    elif new_input_mode != InputMode.REALTIME_AUDIO and self.input_mode == InputMode.REALTIME_AUDIO:
+                        # 从实时音频模式切换出去，停止ASR服务
+                        if self.asr.running:
+                            logger.info("Leaving Realtime Audio mode: Stopping ASR service...")
+                            await self.asr.stop()
+                            logger.info("✅ ASR 服务已停止")
+                    
+                    self.input_mode = new_input_mode
                 except ValueError:
                     pass
             if "output_mode" in data:
@@ -429,6 +451,37 @@ class SessionManager:
             await self.asr.push_audio_data(data)
         except Exception as e:
             logger.error(f"Error processing audio input: {e}", exc_info=True)
+    
+    async def _handle_asr_transcript(self, text: str):
+        """
+        处理ASR转录结果的回调函数
+        
+        当ASR服务通过VAD检测到完整的语音片段并转录完成后，会调用此函数。
+        
+        Args:
+            text: ASR识别出的文本
+        """
+        if not text or not text.strip():
+            return
+        
+        logger.info(f"📝 ASR转录结果: {text}")
+        
+        # 将转录的文本作为用户输入处理
+        await self._handle_user_input(text)
+    
+    async def _handle_vad_trigger(self):
+        """
+        处理VAD触发事件的回调函数
+        
+        当ASR服务检测到用户开始说话时（VAD触发），会调用此函数。
+        可以用于打断AI的语音输出。
+        """
+        logger.debug("🎤 VAD触发：检测到用户语音")
+        
+        # 如果TTS正在运行，打断它（用户说话时自动打断AI）
+        if self.tts.running:
+            logger.info("⚠️ 用户开始说话，打断AI语音输出")
+            await self._handle_interrupt()
 
     # =========================================================================
     # 3. 核心数据流 (Data Flow)

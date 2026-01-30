@@ -71,7 +71,8 @@ const reconnectInterval = ref(null)
 
 // 语音相关状态
 const isVoiceMode = ref(false) // 是否开启语音回复 (TTS)
-const isRecording = ref(false) // 是否正在录音
+const isRecording = ref(false) // 是否正在录音（按钮式录音，已废弃）
+const isASRMode = ref(false) // 是否开启ASR持续录音模式
 
 // 交互控制
 const isInterrupted = ref(false) // 是否处于打断状态 (用于丢弃滞后的音频包)
@@ -608,7 +609,7 @@ const sendConfig = () => {
     if (!socket.value || socket.value.readyState !== WebSocket.OPEN) return;
     
     const configData = {
-        input_mode: isRecording.value ? "audio" : "text",
+        input_mode: isASRMode.value ? "realtime_audio" : "text",
         output_mode: isVoiceMode.value ? "text_audio" : "text_only"
     };
 
@@ -627,11 +628,39 @@ const sendConfig = () => {
 };
 
 /**
- * 切换语音模式
+ * 切换语音模式 (TTS)
  */
 const toggleVoiceMode = () => {
     isVoiceMode.value = !isVoiceMode.value;
-    console.log("[UI] User toggled Voice Mode. New state:", isVoiceMode.value ? "ON" : "OFF");
+    console.log("[UI] User toggled Voice Mode (TTS). New state:", isVoiceMode.value ? "ON" : "OFF");
+    sendConfig();
+};
+
+/**
+ * 切换ASR持续录音模式
+ */
+const toggleASRMode = async () => {
+    if (isASRMode.value) {
+        // 关闭ASR模式
+        audioManager.stopRecording();
+        isASRMode.value = false;
+        console.log("[UI] ASR Mode disabled");
+    } else {
+        // 开启ASR模式
+        try {
+            await audioManager.startRecording((pcmData) => {
+                if (socket.value && socket.value.readyState === WebSocket.OPEN) {
+                    socket.value.send(pcmData);
+                }
+            });
+            isASRMode.value = true;
+            console.log("[UI] ASR Mode enabled - continuous recording started");
+        } catch (e) {
+            console.error("[UI] Failed to start ASR mode:", e);
+            alert("无法访问麦克风，请检查权限设置");
+            return;
+        }
+    }
     sendConfig();
 };
 
@@ -684,7 +713,7 @@ const performHotReload = () => {
     isInterrupted.value = false;
     userInput.value = '';
     audioManager.stopPlayback();
-    audioManager.stopRecording();
+    // 注意：保持ASR持续录音模式不变，因为用户可能希望继续使用
 
     // 3. 通过WebSocket发送热更新指令给后端
     socket.value.send(JSON.stringify({
@@ -744,7 +773,7 @@ const stopInteraction = () => {
     // 3. 更新本地状态
     isTyping.value = false;
     isRecording.value = false; // 如果正在录音也停止
-    audioManager.stopRecording(); // 确保录音停止
+    // 注意：不停止ASR持续录音模式，因为用户可能希望继续保持录音状态
     console.log("[UI] Interaction stopped by user.");
 };
 
@@ -959,12 +988,17 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  // 清理WebSocket连接
   if (socket.value) {
     socket.value.close();
   }
   if (reconnectInterval.value) {
     clearInterval(reconnectInterval.value);
   }
+  
+  // 清理音频资源
+  audioManager.stopPlayback();
+  audioManager.stopRecording();
 });
 </script>
 
@@ -1032,15 +1066,28 @@ onUnmounted(() => {
           
           <!-- 右侧工具栏按钮 -->
           <div class="flex items-center gap-3">
-            <!-- 语音模式开关 -->
+            <!-- TTS语音输出开关 -->
             <button 
               @click="toggleVoiceMode" 
               class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors border flex items-center gap-2"
               :class="isVoiceMode ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-gray-50 text-gray-500 border-gray-200'"
-              title="Toggle Voice Output"
+              title="切换语音输出 (TTS)"
             >
               <i class="fas" :class="isVoiceMode ? 'fa-volume-up' : 'fa-volume-mute'"></i>
-              <span class="hidden md:inline">{{ isVoiceMode ? 'Voice On' : 'Voice Off' }}</span>
+              <span class="hidden md:inline">{{ isVoiceMode ? 'TTS On' : 'TTS Off' }}</span>
+            </button>
+
+            <!-- ASR持续录音开关 -->
+            <button 
+              @click="toggleASRMode" 
+              class="px-3 py-1.5 rounded-full text-xs font-medium transition-colors border flex items-center gap-2 relative"
+              :class="isASRMode ? 'bg-red-50 text-red-600 border-red-200' : 'bg-gray-50 text-gray-500 border-gray-200'"
+              title="切换语音输入 (ASR持续录音)"
+            >
+              <i class="fas" :class="isASRMode ? 'fa-microphone' : 'fa-microphone-slash'"></i>
+              <span class="hidden md:inline">{{ isASRMode ? 'ASR On' : 'ASR Off' }}</span>
+              <!-- 录音中的动画指示器 -->
+              <span v-if="isASRMode" class="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
             </button>
 
             <!-- 主动热更新按钮 -->
