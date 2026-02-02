@@ -21,5 +21,19 @@ export default defineConfig({
         ws: true,
       }
     }
+  },
+  // 定义全局常量
+  define: {
+    'process.env': {},
+    'global': 'globalThis'
+  },
+  // 优化依赖
+  optimizeDeps: {
+    esbuildOptions: {
+      // Node.js 全局变量替换
+      define: {
+        global: 'globalThis'
+      }
+    }
   }
 })

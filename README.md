@@ -80,27 +80,62 @@ cd frontend
 npm install
 ```
 
+> 📖 **详细说明**: 查看 [frontend/README.md](frontend/README.md) 了解前端项目的依赖配置和技术栈说明。
+
+### 常见问题排查
+如果运行 `npm run dev` 时遇到以下错误：
+```
+ERROR: Could not resolve "@pixi/core"
+ERROR: Could not resolve "@pixi/display"
+```
+
+**解决方案**：这是因为 `pixi-live2d-display` 需要 PixiJS 的模块化包。执行以下命令安装缺失的依赖：
+```bash
+npm install @pixi/core @pixi/display @pixi/math @pixi/sprite @pixi/ticker
+```
+
 ## Live2D部署
+
+> 📚 **官方文档**: [pixi-live2d-display 中文文档](https://github.com/guansss/pixi-live2d-display/blob/master/README.zh.md)
 
 ### 1. 安装依赖
 Live2D 依赖已包含在 `package.json` 中，执行 `npm install` 时会自动安装：
-- `pixi.js@7` - 2D渲染引擎
-- `pixi-live2d-display` - Live2D 模型加载和显示库
+- `pixi.js@7` - 2D渲染引擎（完整版）
+- `@pixi/core`, `@pixi/display`, `@pixi/math`, `@pixi/sprite`, `@pixi/ticker` - PixiJS 模块化包（必需）
+- `pixi-live2d-display@0.5.0-beta` - Live2D 模型加载和显示库
 
-### 2. 准备模型文件
+**⚠️ 重要提示**: `pixi-live2d-display@0.5.0-beta` 需要 PixiJS 的模块化包才能正常工作。如果遇到 `Could not resolve "@pixi/core"` 等错误，请确保安装了所有 `@pixi/*` 依赖包：
+```bash
+npm install @pixi/core @pixi/display @pixi/math @pixi/sprite @pixi/ticker
+```
+
+### 2. 下载运行时库（Cubism Core）
+Live2D Cubism 2.1 运行时库已自动下载到 `frontend/public/lib/live2d.min.js`
+
+**版本说明**：
+- **Cubism 2.1** 模型（`.moc` 格式）→ 需要 `live2d.min.js`
+- **Cubism 3/4** 模型（`.moc3` 格式）→ 需要 `live2dcubismcore.min.js`
+
+当前 Pio 模型使用 Cubism 2.1，所以只需要 `live2d.min.js`
+
+**CDN 链接**（可选）：
+- Cubism 2.1: https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js
+- Cubism 4: https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js
+
+### 3. 准备模型文件
 将 Live2D 模型文件放置到 `frontend/public/live2d/` 目录下，例如：
 ```
 frontend/public/live2d/
 └── Pio/
     ├── model.json          # 模型配置文件
-    ├── model.moc           # 模型数据文件
+    ├── model.moc           # 模型数据文件 (Cubism 2.1)
     ├── textures/           # 贴图文件夹
     │   └── *.png
     └── motions/            # 动作文件夹
         └── *.mtn
 ```
 
-### 3. 使用方法
+### 4. 使用方法
 在 Vue 组件中引入 Live2D 组件：
 ```vue
 <template>
@@ -116,7 +151,7 @@ import Live2DCharacter from './components/Live2DCharacter.vue'
 </script>
 ```
 
-### 4. 测试 Live2D
+### 5. 测试 Live2D
 访问测试页面验证模型加载：
 ```
 http://localhost:5173/test-live2d.html
