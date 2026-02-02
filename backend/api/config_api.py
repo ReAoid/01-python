@@ -77,12 +77,27 @@ class ASRConfigUpdate(BaseModel):
     audio: Optional[ASRAudioConfigUpdate] = None
 
 
+class Live2DPositionConfigUpdate(BaseModel):
+    """Live2D 位置配置更新"""
+    x: Optional[int] = None
+    y: Optional[int] = None
+    max_x: Optional[int] = None
+    max_y: Optional[int] = None
+
+
+class Live2DConfigUpdate(BaseModel):
+    """Live2D 配置更新"""
+    enabled: Optional[bool] = None
+    position: Optional[Live2DPositionConfigUpdate] = None
+
+
 class ConfigUpdateRequest(BaseModel):
     """配置更新请求"""
     chat_llm: Optional[ChatLLMConfigUpdate] = None
     embedding_llm: Optional[EmbeddingLLMConfigUpdate] = None
     tts: Optional[TTSConfigUpdate] = None
     asr: Optional[ASRConfigUpdate] = None
+    live2d: Optional[Live2DConfigUpdate] = None
 
 
 # ============================================================================
@@ -152,6 +167,19 @@ async def get_current_config():
     """
     try:
         config_data = load_config_file()
+        
+        # 确保 live2d 配置存在
+        if 'live2d' not in config_data:
+            config_data['live2d'] = {
+                'enabled': False,
+                'position': {
+                    'x': 100,
+                    'y': 500,
+                    'max_x': 1920,
+                    'max_y': 1080
+                }
+            }
+        
         return config_data
     except HTTPException:
         raise

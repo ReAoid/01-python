@@ -104,6 +104,18 @@ class ASRConfig(BaseModel):
     vad: ASRVADConfig = Field(default_factory=ASRVADConfig)
     preprocessing: ASRPreprocessingConfig = Field(default_factory=ASRPreprocessingConfig)
 
+class Live2DPositionConfig(BaseModel):
+    """Live2D 模型位置配置"""
+    x: int = 100
+    y: int = 500
+    max_x: int = 1920
+    max_y: int = 1080
+
+class Live2DConfig(BaseModel):
+    """Live2D 模型配置"""
+    enabled: bool = False
+    position: Live2DPositionConfig = Field(default_factory=Live2DPositionConfig)
+
 # =============================================================================
 # 自定义 JSON Source
 # =============================================================================
@@ -179,6 +191,7 @@ class Settings(BaseSettings):
     - asr: 语音识别配置
     - user_profile: 用户档案配置
     - third_party_api: 第三方服务 API 配置
+    - live2d: Live2D 模型配置
     """
     # ========== LLM 配置 ==========
     chat_llm: ChatLLMConfig = Field(default_factory=ChatLLMConfig)
@@ -191,6 +204,7 @@ class Settings(BaseSettings):
     asr: ASRConfig = Field(default_factory=ASRConfig)
     user_profile: UserProfileConfig = Field(default_factory=UserProfileConfig)
     third_party_api: ThirdPartyApiConfig = Field(default_factory=ThirdPartyApiConfig)
+    live2d: Live2DConfig = Field(default_factory=Live2DConfig)
     
     # ========== 应用信息 ==========
     app_name: str = "灵依"

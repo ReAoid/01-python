@@ -71,6 +71,16 @@
     "relationship_with_ai": "朋友"
   },
   
+  "live2d": {
+    "enabled": false,
+    "position": {
+      "x": 100,
+      "y": 500,
+      "max_x": 1920,
+      "max_y": 1080
+    }
+  },
+  
   "third_party_api": {
     "serpapi_api_key": ""
   }
