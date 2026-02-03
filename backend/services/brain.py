@@ -57,13 +57,12 @@ class SessionManager:
     - 管理增量记忆缓存,防止切换时失忆
     """
     
-    def __init__(self, message_queue: asyncio.Queue, config_loader=None, memory_manager: MemoryManager = None):
+    def __init__(self, message_queue: asyncio.Queue, memory_manager: MemoryManager = None):
         """
         初始化会话管理器。
         
         Args:
             message_queue: 用于与 Agent/Monitor 通信的异步队列
-            config_loader: 配置加载器 (已废弃，保留兼容性)
             memory_manager: 共享的记忆管理器实例，如果为 None 则创建新的
         """
         # 加载配置
@@ -81,7 +80,7 @@ class SessionManager:
         if memory_manager:
             self.memory_manager = memory_manager
             # 如果复用了 memory_manager，我们可以复用它的 llm 或者不持有 llm_memory_service
-            # 这里为了保持兼容性，如果 memory_manager.llm 是 OpenaiLlm 类型，我们引用它，否则新建（通常是复用）
+            # 如果 memory_manager.llm 是 OpenaiLlm 类型，我们引用它，否则新建（通常是复用）
             self.llm_memory_service = getattr(memory_manager, 'llm', None) or OpenaiLlm()
         else:
             self.llm_memory_service = OpenaiLlm()

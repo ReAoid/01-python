@@ -85,34 +85,13 @@ class TTSService:
             Dict[str, Any]: 扁平化的 TTS 配置字典，用于传给子进程。
         """
         
-        # 默认值
-        enabled = True
-        host = '127.0.0.1'
-        port = 8001
-        character = 'feibi'
-        genie_data_dir = None
-        
-        # 1. 从配置对象读取基础信息
-        if isinstance(self.config, dict):
-            # 兼容字典配置 (测试或简单调用)
-            tts = self.config.get('tts', self.config)
-            server = tts.get('server', {}) if 'server' in tts else tts
-            
-            enabled = tts.get('enabled', enabled)
-            character = tts.get('active_character', character)
-            genie_data_dir = tts.get('genie_data_dir', genie_data_dir)
-            
-            # 尝试从不同位置获取 host/port
-            host = server.get('host', tts.get('server_host', host))
-            port = server.get('port', tts.get('server_port', port))
-        else:
-            # Pydantic Settings 对象
-            t = self.config.tts
-            enabled = t.enabled
-            host = t.server.host
-            port = t.server.port
-            character = t.active_character
-            genie_data_dir = t.genie_data_dir
+        # 从配置对象读取 TTS 配置
+        tts = self.config.tts
+        enabled = tts.enabled
+        host = tts.server.host
+        port = tts.server.port
+        character = tts.active_character
+        genie_data_dir = tts.genie_data_dir
 
         # 2. 确定数据目录路径
         # 尝试查找有效的 TTS 目录 (使用项目目录)

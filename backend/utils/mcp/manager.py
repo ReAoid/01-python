@@ -158,8 +158,8 @@ def get_mcp_manager(auto_setup_logger: bool = True) -> MCPManager:
     if _manager_instance is None:
         # 首次初始化时,自动配置日志
         if auto_setup_logger:
-            from backend.core.logger import setup_logger
-            setup_logger(log_level="INFO", log_file=None)
+            from backend.core.logger import init_logging
+            init_logging(log_level="INFO", log_file=None)
             logger.debug("MCP Manager 自动初始化日志配置")
         
         _manager_instance = MCPManager()

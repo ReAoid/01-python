@@ -201,20 +201,3 @@ def shutdown_logging() -> None:
         _log_queue = None
 
 
-# 向后兼容旧接口，内部统一转到 init_logging
-
-def setup_logger(
-    log_level: str = "INFO",
-    log_file: Optional[str] = "logs/app.log",
-    rotation: str = "10 MB",
-    retention: str = "7 days",
-):
-    """兼容旧代码的入口，推荐使用 init_logging"""
-    init_logging(log_level=log_level, log_file=log_file, rotation=rotation, retention=retention)
-    return logging.getLogger(__name__)
-
-
-def init_default_logger():
-    """默认初始化，兼容旧接口"""
-    init_logging()
-    return logging.getLogger(__name__)

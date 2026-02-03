@@ -97,18 +97,6 @@ class ASRService:
         config_dict["ser_enabled"] = getattr(asr_settings, "ser_enabled", False)
         config_dict["speaker_enabled"] = getattr(asr_settings, "speaker_enabled", False)
         
-        # VAD 配置（兼容旧版本配置结构）
-        if hasattr(asr_settings, "vad"):
-            vad_obj = asr_settings.vad
-            config_dict["energy_threshold"] = getattr(vad_obj, "energy_threshold", 0.01)
-            config_dict["aggressiveness"] = getattr(vad_obj, "aggressiveness", 3)
-        
-        # 预处理配置
-        if hasattr(asr_settings, "preprocessing"):
-            prep_obj = asr_settings.preprocessing
-            config_dict["noise_reduction"] = getattr(prep_obj, "noise_reduction", False)
-            config_dict["auto_gain_control"] = getattr(prep_obj, "auto_gain_control", False)
-        
         return config_dict
     
     async def start(self, on_transcript: Callable, on_vad_trigger: Callable):

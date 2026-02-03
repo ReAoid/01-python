@@ -202,10 +202,10 @@ class OpenaiLlm(Llm):
 # --- 使用示例 ---
 if __name__ == '__main__':
     try:
-        from backend.core.logger import setup_logger
+        from backend.core.logger import init_logging
 
         # 初始化日志系统
-        setup_logger(log_level="INFO")
+        init_logging(log_level="INFO")
 
         llm = OpenaiLlm()
 
