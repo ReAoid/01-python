@@ -59,7 +59,8 @@ const props = defineProps({
 const emit = defineEmits([
   'toggle-sidebar',       // 切换侧边栏
   'log-entry',            // 转发日志
-  'connection-change'     // 连接状态变化
+  'connection-change',    // 连接状态变化
+  'system-notification'   // 系统通知
 ])
 
 // ========================================================================
@@ -366,6 +367,7 @@ const sendMessage = () => {
  * - user_message: 用户消息（ASR 转写结果）
  * - state_change: 后端状态变化
  * - log_entry: 后端日志条目
+ * - system_notification: 系统提示消息（5秒浮动弹窗）
  * 
  * 【流式输出】
  * - AI 回复采用流式传输，每次收到一小段文本
@@ -375,6 +377,21 @@ const handleSocketMessage = (message) => {
   if (message.type === 'text_stream') {
     // AI 流式回复
     chat.isTyping.value = false
+    
+    // 检查是否为系统提示消息（以【系统提示】开头）
+    const systemPrefix = '【系统提示】'
+    if (message.content && message.content.trim().startsWith(systemPrefix)) {
+      // 提取系统提示内容（去掉前缀）
+      const notificationContent = message.content.trim().substring(systemPrefix.length).trim()
+      if (notificationContent) {
+        // 触发系统通知
+        emit('system-notification', notificationContent)
+        console.log('[System] Notification triggered:', notificationContent)
+      }
+      // 不在聊天界面显示系统提示消息
+      return
+    }
+    
     chat.addOrUpdateAIMessage(message.content)
     chat.scrollToBottom()
   } else if (message.type === 'user_message') {
@@ -400,6 +417,12 @@ const handleSocketMessage = (message) => {
   } else if (message.type === 'log_entry') {
     // 转发日志给父组件处理
     emit('log-entry', message.data)
+  } else if (message.type === 'system_notification') {
+    // 系统通知消息（专用消息类型）
+    if (message.content) {
+      emit('system-notification', message.content)
+      console.log('[System] Notification received:', message.content)
+    }
   }
 }
 

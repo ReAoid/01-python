@@ -60,6 +60,7 @@ import ConfigEditor from './ConfigEditor.vue'
 import TTSTestPanel from '../panels/TTSTestPanel.vue'
 import ASRTestPanel from '../panels/ASRTestPanel.vue'
 import Live2DCharacter from '../presentational/Live2DCharacter.vue'
+import SystemNotificationManager from './SystemNotificationManager.vue'
 
 // ========================================================================
 // Composables - 状态管理
@@ -89,6 +90,9 @@ const live2dCharacterRef = ref(null)
 
 /** WebSocket 连接状态（从 ChatContainer 传递上来） */
 const isConnected = ref(false)
+
+/** 系统通知管理器组件引用 (Smart Component) */
+const notificationRef = ref(null)
 
 // ========================================================================
 // UI 交互方法
@@ -153,6 +157,21 @@ const handleLogEntry = (logData) => {
   logs.addLog(logData)
 }
 
+/**
+ * 处理系统通知
+ * 
+ * @param {string} message - 系统通知消息内容
+ * 
+ * 【功能】显示系统提示浮动弹窗
+ * 【来源】后端通过 WebSocket 发送的系统消息
+ * 【显示】5秒后自动渐隐消失
+ */
+const handleSystemNotification = (message) => {
+  if (notificationRef.value) {
+    notificationRef.value.addNotification(message, 5000)
+  }
+}
+
 // ========================================================================
 // 生命周期钩子
 // ========================================================================
@@ -192,6 +211,7 @@ onMounted(() => {
         @toggle-sidebar="toggleSidebar"
         @log-entry="handleLogEntry"
         @connection-change="(connected) => isConnected = connected"
+        @system-notification="handleSystemNotification"
       />
 
       <!-- 历史界面 -->
@@ -486,6 +506,9 @@ onMounted(() => {
       top: `${config.live2dPosition.value.y}px`
     }"
   />
+  
+  <!-- 系统通知管理器 (Smart Component) -->
+  <SystemNotificationManager ref="notificationRef" />
 </template>
 
 <style scoped>
