@@ -40,7 +40,19 @@ async def asr_worker_async(request_queue: Queue, response_queue: Queue, config: 
     
     if enabled and engine_type == "funasr":
         logger.info("使用 FunASREngine")
-        engine: BaseASREngine = FunASREngine(config)
+        # 从 config 字典中提取各个字段作为命名参数
+        engine: BaseASREngine = FunASREngine(
+            model_cache_dir=config.get("model_cache_dir"),
+            language=config.get("language", "auto"),
+            vad_enabled=config.get("vad_enabled", True),
+            lid_enabled=config.get("lid_enabled", True),
+            ser_enabled=config.get("ser_enabled", False),
+            speaker_enabled=config.get("speaker_enabled", False),
+            device=config.get("device", "cpu"),
+            sample_rate=config.get("sample_rate", 16000),
+            channels=config.get("channels", 1),
+            sample_width=config.get("sample_width", 2)
+        )
     else:
         logger.info("使用 DummyASREngine (default)")
         engine = DummyASREngine(config)

@@ -51,6 +51,7 @@
     "enabled": false,
     "engine": "funasr",
     "model_cache_dir": "backend/data/asr",
+    "device": "cpu",
     "language": "zh",
     "vad_enabled": true,
     "lid_enabled": true,

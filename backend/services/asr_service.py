@@ -73,6 +73,7 @@ class ASRService:
             "enabled": getattr(asr_settings, "enabled", False),
             "engine": getattr(asr_settings, "engine", "dummy"),
             "model_path": getattr(asr_settings, "model_path", None),
+            "model_cache_dir": getattr(asr_settings, "model_cache_dir", None),
             "device": getattr(asr_settings, "device", "cpu"),
             "language": getattr(asr_settings, "language", "zh"),
             "min_audio_length": getattr(asr_settings, "min_audio_length", 1.0),
@@ -84,11 +85,21 @@ class ASRService:
             config_dict["sample_rate"] = getattr(audio_obj, "sample_rate", 16000)
             config_dict["channels"] = getattr(audio_obj, "channels", 1)
             config_dict["sample_width"] = getattr(audio_obj, "sample_width", 2)
+        else:
+            # 默认音频配置
+            config_dict["sample_rate"] = 16000
+            config_dict["channels"] = 1
+            config_dict["sample_width"] = 2
         
-        # VAD 配置
+        # FunASR 功能开关（从顶层配置读取）
+        config_dict["vad_enabled"] = getattr(asr_settings, "vad_enabled", True)
+        config_dict["lid_enabled"] = getattr(asr_settings, "lid_enabled", True)
+        config_dict["ser_enabled"] = getattr(asr_settings, "ser_enabled", False)
+        config_dict["speaker_enabled"] = getattr(asr_settings, "speaker_enabled", False)
+        
+        # VAD 配置（兼容旧版本配置结构）
         if hasattr(asr_settings, "vad"):
             vad_obj = asr_settings.vad
-            config_dict["vad_enabled"] = getattr(vad_obj, "enabled", True)
             config_dict["energy_threshold"] = getattr(vad_obj, "energy_threshold", 0.01)
             config_dict["aggressiveness"] = getattr(vad_obj, "aggressiveness", 3)
         
