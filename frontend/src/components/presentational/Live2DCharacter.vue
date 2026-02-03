@@ -40,7 +40,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { Live2DController } from '../utils/Live2DController.js'
+import { Live2DController } from '../../utils/Live2DController.js'
 
 // =========================================================================
 // Props 定义

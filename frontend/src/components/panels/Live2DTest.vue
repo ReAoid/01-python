@@ -282,7 +282,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import Live2DCharacter from './Live2DCharacter.vue'
+import Live2DCharacter from '../presentational/Live2DCharacter.vue'
 
 // =========================================================================
 // 状态定义

@@ -9,7 +9,7 @@
  * - 它居中显示核心聊天界面 (ChatInterface)。
  * - 在移动端 (p-0) 铺满全屏，在桌面端 (md:p-4) 保留四周间距。
  */
-import ChatInterface from './components/ChatInterface.vue'
+import ChatInterface from './components/containers/ChatInterface.vue'
 </script>
 
 <template>

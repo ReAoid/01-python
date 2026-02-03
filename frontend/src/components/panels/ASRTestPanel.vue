@@ -6,7 +6,7 @@
  */
 
 import { ref, onMounted, nextTick } from 'vue'
-import { AudioRecorder } from '../utils/audioRecorder.js'
+import { AudioRecorder } from '../../utils/audioRecorder.js'
 
 // Emits
 const emit = defineEmits(['close'])
