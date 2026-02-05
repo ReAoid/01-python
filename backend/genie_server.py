@@ -23,7 +23,7 @@ from typing import Optional
 
 from backend.core.logger import init_logging, shutdown_logging
 
-# 添加项目根目录到 Python 路径
+# 添加根目录到 Python 路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 logger = logging.getLogger(__name__)
@@ -48,9 +48,9 @@ def ensure_genie_data(genie_data_dir: Optional[str] = None) -> Path:
     if genie_data_dir:
         genie_data_path = Path(genie_data_dir)
         if not genie_data_path.is_absolute():
-             # 如果是相对路径，转换为绝对路径（相对于项目根目录）
-            project_root = Path(__file__).parent.parent
-            genie_data_path = project_root / genie_data_dir
+             # 如果是相对路径，转换为绝对路径（相对于根目录）
+            root_dir = Path(__file__).parent.parent
+            genie_data_path = root_dir / genie_data_dir
         
         # 确保路径指向 GenieData 目录（如果配置的是父目录，自动加上 GenieData）
         if genie_data_path.name != 'GenieData':

@@ -3,7 +3,7 @@ import logging
 import time
 import json
 from enum import Enum
-from typing import List, Dict, Optional, Callable
+from typing import List, Dict, Optional
 import re
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -235,7 +235,15 @@ class SessionManager:
         
         # 如果需要音频输出但 TTS 未成功就绪，通知前端
         if output_mode == OutputMode.TEXT_AND_AUDIO and not self.tts.tts_ready:
-            await self._send_text_to_frontend("【系统提示】语音服务启动失败，将仅以文本形式回复。")
+            error_msg = "TTS 服务启动失败，将仅以文本形式回复"
+            await self._send_text_to_frontend(f"【系统提示】{error_msg}")
+            await self._send_service_error("tts", error_msg)
+        
+        # 如果需要语音输入但 ASR 未成功就绪，通知前端
+        if input_mode in (InputMode.AUDIO, InputMode.REALTIME_AUDIO) and not self.asr.asr_ready:
+            error_msg = "ASR 服务启动失败，请检查服务状态"
+            await self._send_text_to_frontend(f"【系统提示】{error_msg}")
+            await self._send_service_error("asr", error_msg)
         
         logger.info(
             f"系统组件初始化完成 (耗时 {time.time() - start_time:.2f}秒, 输入: {input_mode.value}, 输出: {output_mode.value})")
@@ -344,7 +352,11 @@ class SessionManager:
                             if success:
                                 logger.info("✅ ASR 服务启动成功（持续录音模式）")
                             else:
-                                await self._send_text_to_frontend("【系统提示】语音识别服务启动失败。")
+                                error_msg = "ASR 服务启动失败，请检查服务状态"
+                                await self._send_text_to_frontend(f"【系统提示】{error_msg}")
+                                await self._send_service_error("asr", error_msg)
+                                # 不切换到实时音频模式
+                                return
                     elif new_input_mode != InputMode.REALTIME_AUDIO and self.input_mode == InputMode.REALTIME_AUDIO:
                         # 从实时音频模式切换出去，停止ASR服务
                         if self.asr.running:
@@ -367,8 +379,12 @@ class SessionManager:
                         if success:
                             logger.info("✅ TTS 服务懒启动成功")
                         else:
-                            await self._send_text_to_frontend("【系统提示】语音服务启动失败，将继续以纯文本形式回复。")
-                    
+                            error_msg = "TTS 服务启动失败，请检查服务状态"
+                            await self._send_text_to_frontend(f"【系统提示】{error_msg}")
+                            await self._send_service_error("tts", error_msg)
+                            # 不切换到音频模式
+                            return
+
                     self.output_mode = new_mode
                 except ValueError:
                     pass
@@ -624,7 +640,7 @@ class SessionManager:
 
     def _update_incremental_cache(self, text: str):
         """
-        更新增量缓存中的 assistant 消息。
+        更新增量缓存中的 assistant 消消息。
         如果缓存为空或最后一条不是 assistant 消息,则创建新消息;
         否则追加到现有 assistant 消息中。
         
@@ -745,6 +761,25 @@ class SessionManager:
                 }))
             except Exception as e:
                 logger.error(f"Send state error: {e}")
+    
+    async def _send_service_error(self, service: str, error: str):
+        """
+        发送服务错误到前端
+        
+        Args:
+            service: 服务类型 ("tts" 或 "asr")
+            error: 错误信息
+        """
+        if self.websocket:
+            try:
+                await self.websocket.send_text(json.dumps({
+                    "type": "service_error",
+                    "service": service,
+                    "error": error
+                }))
+                logger.warning(f"Service error sent to frontend: {service} - {error}")
+            except Exception as e:
+                logger.error(f"Failed to send service error: {e}")
 
     # =========================================================================
     # 4. 真正的无缝热重载

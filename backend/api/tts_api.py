@@ -41,7 +41,13 @@ async def check_tts_status():
     检查 TTS 服务状态
     
     Returns:
-        服务状态信息
+        服务状态信息，格式：
+        {
+            "status": "ok" | "error",
+            "enabled": bool,
+            "running": bool,
+            "message": str
+        }
     """
     try:
         tts_config = settings.tts
@@ -49,6 +55,7 @@ async def check_tts_status():
         # 检查是否启用
         if not tts_config.enabled:
             return {
+                "status": "error",
                 "enabled": False,
                 "running": False,
                 "message": "TTS 服务未启用"
@@ -65,6 +72,7 @@ async def check_tts_status():
                 
                 if response.status_code < 500:
                     return {
+                        "status": "ok",
                         "enabled": True,
                         "running": True,
                         "server_url": server_url,
@@ -75,6 +83,7 @@ async def check_tts_status():
                     }
                 else:
                     return {
+                        "status": "error",
                         "enabled": True,
                         "running": False,
                         "server_url": server_url,
@@ -83,6 +92,7 @@ async def check_tts_status():
         
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             return {
+                "status": "error",
                 "enabled": True,
                 "running": False,
                 "server_url": server_url,

@@ -71,7 +71,7 @@ class EventBus:
                 # 但如果想要“发后即忘”，我们不严格等待。
                 # 理想情况下，我们等待它们以确保运行，或者只是生成它们。
                 # 对于本系统，我们生成它们且不严重阻塞主流程。
-                background_task = asyncio.create_task(self._run_subscribers(tasks, event_type))
+                asyncio.create_task(self._run_subscribers(tasks, event_type))
 
     async def _run_subscribers(self, tasks, event_type):
         """辅助方法：等待订阅者完成并记录错误。"""

@@ -112,9 +112,9 @@ class ModelStatus(Enum):
 class ConfigLoader:
     """配置加载器 - 从 core_config.json 读取配置"""
     
-    def __init__(self, project_root: Path):
-        self.project_root = project_root
-        self.config_path = project_root / "backend" / "config" / "core_config.json"
+    def __init__(self, root_dir: Path):
+        self.root_dir = root_dir
+        self.config_path = root_dir / "backend" / "config" / "core_config.json"
         self._config_data: Optional[Dict[str, Any]] = None
     
     def load(self) -> Dict[str, Any]:
@@ -145,8 +145,8 @@ class ConfigLoader:
         
         if model_type == "tts":
             data_dir = config.get("genie_data_dir", "backend/data/tts")
-        else:  # asr
-            data_dir = "backend/data/asr"
+        elif model_type == "asr":
+            data_dir = config.get("model_cache_dir", "backend/data/asr")
         
         return self._to_abs_path(data_dir)
     
@@ -160,7 +160,7 @@ class ConfigLoader:
     
     def _to_abs_path(self, path: str) -> Path:
         """转换为绝对路径"""
-        return Path(path) if os.path.isabs(path) else self.project_root / path
+        return Path(path) if os.path.isabs(path) else self.root_dir / path
 
 
 # =============================================================================
@@ -903,9 +903,9 @@ class AllReadyManager:
     
     def __init__(self, args: argparse.Namespace):
         self.args = args
-        # all_ready.py 在 backend/ 目录下，需要获取项目根目录
-        self.project_root = Path(__file__).parent.parent.resolve()  # 从 backend/ 回到项目根目录
-        self.config_loader = ConfigLoader(self.project_root)
+        # all_ready.py 在 backend/ 目录下，需要获取根目录
+        self.root_dir = Path(__file__).parent.parent.resolve()  # 从 backend/ 回到根目录
+        self.config_loader = ConfigLoader(self.root_dir)
         self.model_checker = ModelChecker(self.config_loader)
         self.downloader = ModelDownloader(self.config_loader)
     
@@ -918,7 +918,7 @@ class AllReadyManager:
         """
         print_header("灵依智能体系统 - 模型与数据安装工具")
         
-        print_info(f"项目根目录: {self.project_root}")
+        print_info(f"根目录: {self.root_dir}")
         
         # 处理可选模型下载
         if self.args.download_emotion or self.args.download_speaker:

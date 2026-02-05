@@ -39,6 +39,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useChat } from '../../composables/useChat'
 import { useWebSocket } from '../../composables/useWebSocket'
+import { useServiceStatus } from '../../composables/useServiceStatus'
 import { AudioManager } from '../../utils/audio.js'
 import ChatHeader from '../presentational/ChatHeader.vue'
 import ChatMessages from '../presentational/ChatMessages.vue'
@@ -72,6 +73,9 @@ const chat = useChat()
 
 /** WebSocket 连接 Composable */
 const ws = useWebSocket()
+
+/** 服务状态检查 Composable */
+const serviceStatus = useServiceStatus()
 
 /** 音频管理器（处理 TTS 播放和 ASR 录音） */
 const audioManager = new AudioManager()
@@ -172,32 +176,90 @@ const sendConfig = () => {
  * 【影响】
  * - 开启：AI 回复会同时输出文字和语音
  * - 关闭：AI 回复只输出文字
+ * 
+ * 【新增】服务状态检查
+ * - 开启前检查 TTS 服务是否可用
+ * - 服务不可用时弹窗提醒并阻止开启
  */
-const toggleVoiceMode = () => {
-  isVoiceMode.value = !isVoiceMode.value
-  console.log('[UI] Voice Mode toggled:', isVoiceMode.value ? 'ON' : 'OFF')
-  sendConfig()
+const toggleVoiceMode = async () => {
+  // 如果是关闭操作，直接执行
+  if (isVoiceMode.value) {
+    isVoiceMode.value = false
+    console.log('[UI] Voice Mode disabled')
+    sendConfig()
+    return
+  }
+
+  // 开启前检查服务状态
+  try {
+    const status = await serviceStatus.checkTTSStatus()
+    
+    if (!status.enabled) {
+      emit('system-notification', 'TTS 服务未启用，请在配置中启用 TTS 功能')
+      console.warn('[UI] TTS service is not enabled')
+      return
+    }
+
+    if (!status.available) {
+      const message = status.message || 'TTS 服务不可用，请检查服务状态'
+      emit('system-notification', `TTS 服务错误：${message}`)
+      console.error('[UI] TTS service is not available:', status.message)
+      return
+    }
+
+    // 服务正常，开启 TTS 模式
+    isVoiceMode.value = true
+    console.log('[UI] Voice Mode enabled')
+    sendConfig()
+  } catch (error) {
+    emit('system-notification', 'TTS 服务检查失败，请检查后端连接')
+    console.error('[UI] Failed to check TTS status:', error)
+  }
 }
 
 /**
  * 切换 ASR 语音输入模式
  * 
- * 【功能】启用/禁用实时语音转文字
+ * 【功能】启用/禁用 实时语音转文字
  * 【流程】
  * - 开启：请求麦克风权限 → 开始录音 → 实时发送音频数据
  * - 关闭：停止录音
  * 
  * 【权限】需要浏览器麦克风权限
  * 【错误处理】权限拒绝时显示提示
+ * 
+ * 【新增】服务状态检查
+ * - 开启前检查 ASR 服务是否可用
+ * - 服务不可用时弹窗提醒并阻止开启
  */
 const toggleASRMode = async () => {
+  // 如果是关闭操作，直接执行
   if (isASRMode.value) {
-    // 关闭 ASR 模式
     audioManager.stopRecording()
     isASRMode.value = false
     console.log('[UI] ASR Mode disabled')
-  } else {
-    // 开启 ASR 模式
+    sendConfig()
+    return
+  }
+
+  // 开启前检查服务状态
+  try {
+    const status = await serviceStatus.checkASRStatus()
+    
+    if (!status.enabled) {
+      emit('system-notification', 'ASR 服务未启用，请在配置中启用 ASR 功能')
+      console.warn('[UI] ASR service is not enabled')
+      return
+    }
+
+    if (!status.available) {
+      const message = status.message || 'ASR 服务不可用，请检查服务状态'
+      emit('system-notification', `ASR 服务错误：${message}`)
+      console.error('[UI] ASR service is not available:', status.message)
+      return
+    }
+
+    // 服务正常，开启 ASR 模式
     try {
       await audioManager.startRecording((pcmData) => {
         if (ws.isConnected.value) {
@@ -206,13 +268,15 @@ const toggleASRMode = async () => {
       })
       isASRMode.value = true
       console.log('[UI] ASR Mode enabled')
+      sendConfig()
     } catch (e) {
       console.error('[UI] Failed to start ASR mode:', e)
-      alert('无法访问麦克风，请检查权限设置')
-      return
+      emit('system-notification', '无法访问麦克风，请检查浏览器权限设置')
     }
+  } catch (error) {
+    emit('system-notification', 'ASR 服务检查失败，请检查后端连接')
+    console.error('[UI] Failed to check ASR status:', error)
   }
-  sendConfig()
 }
 
 /**
@@ -368,10 +432,15 @@ const sendMessage = () => {
  * - state_change: 后端状态变化
  * - log_entry: 后端日志条目
  * - system_notification: 系统提示消息（5秒浮动弹窗）
+ * - service_error: 服务错误（TTS/ASR 服务异常）
  * 
  * 【流式输出】
  * - AI 回复采用流式传输，每次收到一小段文本
  * - 自动追加到最后一条 AI 消息上
+ *
+ * 【服务错误处理】
+ * - 收到服务错误时自动关闭对应服务
+ * - 弹窗提醒用户
  */
 const handleSocketMessage = (message) => {
   if (message.type === 'text_stream') {
@@ -423,6 +492,49 @@ const handleSocketMessage = (message) => {
       emit('system-notification', message.content)
       console.log('[System] Notification received:', message.content)
     }
+  } else if (message.type === 'service_error') {
+    // 服务错误处理
+    handleServiceError(message)
+  }
+}
+
+/**
+ * 处理服务错误
+ * 
+ * @param {Object} message - 错误消息对象
+ * 
+ * 【功能】
+ * - 根据错误类型关闭对应服务
+ * - 弹窗提醒用户
+ * - 更新服务配置
+ * 
+ * 【错误类型】
+ * - tts_error: TTS 服务错误
+ * - asr_error: ASR 服务错误
+ */
+const handleServiceError = (message) => {
+  const { service, error } = message
+  
+  console.error(`[Service Error] ${service}:`, error)
+  
+  if (service === 'tts' && isVoiceMode.value) {
+    // TTS 服务错误，关闭语音模式
+    isVoiceMode.value = false
+    audioManager.stopPlayback()
+    sendConfig()
+    
+    const errorMsg = error || 'TTS 服务发生错误'
+    emit('system-notification', `TTS 服务已自动关闭：${errorMsg}`)
+    console.warn('[UI] TTS Mode auto-disabled due to service error')
+  } else if (service === 'asr' && isASRMode.value) {
+    // ASR 服务错误，关闭语音输入模式
+    isASRMode.value = false
+    audioManager.stopRecording()
+    sendConfig()
+    
+    const errorMsg = error || 'ASR 服务发生错误'
+    emit('system-notification', `ASR 服务已自动关闭：${errorMsg}`)
+    console.warn('[UI] ASR Mode auto-disabled due to service error')
   }
 }
 

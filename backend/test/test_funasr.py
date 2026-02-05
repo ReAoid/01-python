@@ -1,16 +1,18 @@
 """
 FunASR 引擎测试文件
 
-测试 FunASR 引擎的各项功能：
-1. 基本初始化和配置
-2. VAD 语音端点检测
-3. 语言识别和语音转写
-4. 情感识别（可选）
-5. 说话人辨别（可选）
-6. 实时音频流处理
+测试 FunASR 引擎的各项功能（清晰分阶段测试）：
+
+阶段 1: 基本初始化和配置
+阶段 2: VAD 语音端点检测
+阶段 3: 语言识别和语音转写
+阶段 4: 实时音频流处理
+阶段 5: 完整功能测试（VAD + LID + SER + 说话人）
+阶段 6: 真实音频文件测试
 
 使用方法：
-    python test_funasr.py
+    cd /Users/mingy/Documents/python/01-python
+    python backend/test/test_funasr.py
 """
 
 import asyncio
@@ -22,7 +24,7 @@ import struct
 import math
 from pathlib import Path
 
-# 添加项目根目录到 Python 路径
+# 添加根目录到 Python 路径
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from backend.utils.asr.funasr_engine import FunASREngine

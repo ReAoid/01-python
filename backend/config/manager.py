@@ -20,8 +20,8 @@ class ConfigManager:
         return cls._instance
 
     @property
-    def project_root(self) -> Path:
-        return paths.PROJECT_ROOT
+    def root_dir(self) -> Path:
+        return paths.ROOT_DIR
 
     def get_config_path(self, filename: str) -> Path:
         """获取配置文件路径"""

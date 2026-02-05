@@ -13,17 +13,17 @@ APP_NAME = "灵依"
 # 核心路径定义
 # ============================================================================
 
-def get_project_root() -> Path:
-    """获取项目根目录 (backend/)"""
+def get_root_dir() -> Path:
+    """获取根目录 (backend/)"""
     return Path(__file__).resolve().parent.parent
 
 def get_data_dir() -> Path:
     """获取数据根目录 (backend/data/)"""
-    return get_project_root() / "data"
+    return get_root_dir() / "data"
 
 def get_config_dir() -> Path:
     """获取配置目录 (backend/config/)"""
-    return get_project_root() / "config"
+    return get_root_dir() / "config"
 
 def get_memory_dir() -> Path:
     """获取记忆存储目录 (backend/data/memory/)"""
@@ -71,7 +71,7 @@ def ensure_directories():
 # 便捷常量（模块加载时初始化）
 # ============================================================================
 
-PROJECT_ROOT = get_project_root()
+ROOT_DIR = get_root_dir()
 CONFIG_DIR = get_config_dir()
 DATA_DIR = get_data_dir()
 MEMORY_DIR = get_memory_dir()

@@ -7,9 +7,9 @@ from contextlib import asynccontextmanager
 
 from backend.core.logger import init_logging, shutdown_logging
 
-# 添加项目根目录到 Python 路径
-project_root = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(project_root))
+# 添加根目录到 Python 路径
+root_dir = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(root_dir))
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -37,7 +37,7 @@ init_logging(
 logger = logging.getLogger(__name__)
 
 # 定义路径
-frontend_path = project_root / "frontend"
+frontend_path = root_dir / "frontend"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -425,7 +425,7 @@ if __name__ == "__main__":
     logger.info("=" * 70)
     logger.info("灵依 Backend API 启动中...")
     logger.info("=" * 70)
-    logger.info(f"项目根目录: {project_root}")
+    logger.info(f"根目录: {root_dir}")
     logger.info(f"前端目录: {frontend_path}")
     logger.info(f"前端存在: {frontend_path.exists()}")
     logger.info("")

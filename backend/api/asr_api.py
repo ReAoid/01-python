@@ -44,7 +44,12 @@ async def check_asr_status():
     检查 ASR 服务状态
     
     Returns:
-        服务状态信息
+        服务状态信息，格式：
+        {
+            "status": "ok" | "error",
+            "enabled": bool,
+            "message": str
+        }
     """
     try:
         asr_config = settings.asr
@@ -52,22 +57,25 @@ async def check_asr_status():
         # 检查是否启用
         if not asr_config.enabled:
             return {
+                "status": "error",
                 "enabled": False,
                 "message": "ASR 服务未启用"
             }
         
         # 检查模型是否存在
-        # 将相对路径转换为绝对路径（相对于项目根目录的父目录）
+        # 将相对路径转换为绝对路径（相对于根目录的父目录）
         if asr_config.model_cache_dir:
             model_cache_dir = Path(asr_config.model_cache_dir)
             if not model_cache_dir.is_absolute():
-                # 相对路径，相对于项目根目录的父目录（01-python/）
-                project_parent = paths.PROJECT_ROOT.parent
+                # 相对路径，相对于根目录的父目录（01-python/）
+                project_parent = paths.ROOT_DIR.parent
                 model_cache_dir = (project_parent / model_cache_dir).resolve()
         else:
             model_cache_dir = None
         
         model_status = {}
+        all_models_ready = True
+        
         if model_cache_dir and model_cache_dir.exists():
             # 检查 FunASR 模型目录
             models_dir = model_cache_dir / "models" / "iic"
@@ -79,19 +87,36 @@ async def check_asr_status():
             
             for model_name in required_models:
                 model_path = models_dir / model_name
+                exists = model_path.exists()
                 model_status[model_name] = {
-                    "exists": model_path.exists(),
+                    "exists": exists,
                     "path": str(model_path)
                 }
+                if not exists:
+                    all_models_ready = False
+        else:
+            all_models_ready = False
+        
+        # 判断服务是否可用
+        if not all_models_ready:
+            return {
+                "status": "error",
+                "enabled": True,
+                "message": "ASR 模型文件缺失，请下载模型文件",
+                "engine": asr_config.engine,
+                "model_cache_dir": str(model_cache_dir) if model_cache_dir else None,
+                "models": model_status
+            }
         
         return {
+            "status": "ok",
             "enabled": True,
             "engine": asr_config.engine,
             "model": asr_config.model,
             "language": asr_config.language,
             "model_cache_dir": str(model_cache_dir) if model_cache_dir else None,
             "models": model_status,
-            "message": "ASR 配置已加载"
+            "message": "ASR 服务运行正常"
         }
     
     except Exception as e:
@@ -150,7 +175,7 @@ async def test_asr_upload(
             if model_cache_dir:
                 model_cache_dir_path = Path(model_cache_dir)
                 if not model_cache_dir_path.is_absolute():
-                    project_parent = paths.PROJECT_ROOT.parent
+                    project_parent = paths.ROOT_DIR.parent
                     model_cache_dir = str((project_parent / model_cache_dir_path).resolve())
             
             # 创建 ASR 引擎实例
@@ -254,7 +279,7 @@ async def list_asr_models():
         if asr_config.model_cache_dir:
             model_cache_dir = Path(asr_config.model_cache_dir)
             if not model_cache_dir.is_absolute():
-                project_parent = paths.PROJECT_ROOT.parent
+                project_parent = paths.ROOT_DIR.parent
                 model_cache_dir = (project_parent / model_cache_dir).resolve()
         else:
             model_cache_dir = None

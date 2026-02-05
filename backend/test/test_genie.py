@@ -1,26 +1,47 @@
+"""
+Genie TTS 引擎测试文件
+
+测试 Genie TTS 引擎的各项功能（清晰分阶段测试）：
+
+阶段 1: 检查模型路径配置
+阶段 2: 连接 TTS 服务
+阶段 3: 加载角色模型
+阶段 4: 设置参考音频
+阶段 5: 合成测试与保存
+
+使用方法：
+    cd /Users/mingy/Documents/python/01-python
+    python backend/test/test_genie.py
+
+前置条件：
+    - Genie TTS 服务已在 8001 端口启动
+    - 角色模型已下载到 backend/data/tts/GenieData/CharacterModels/
+"""
+
 import asyncio
 import sys
 import logging
 import json
 import wave
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # 路径配置
 # -----------------------------------------------------------------------------
-# 1. 确定项目根目录 (01-python)
-# 当前文件: backend/test/test_genie.py
-# parent -> backend/test
-# parent.parent -> backend
-# parent.parent.parent -> 01-python (项目根目录)
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+# 确定根目录 (01-python)
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 
-logger = logging.getLogger(__name__)
-
-# 2. 确保 backend 模块可以被导入
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.append(str(PROJECT_ROOT))
+# 确保 backend 模块可以被导入
+if str(ROOT_DIR) not in sys.path:
+    sys.path.append(str(ROOT_DIR))
 
 try:
     from backend.utils.tts.genie_engine import _GenieTTSClient as GenieTTS
@@ -30,6 +51,8 @@ except ImportError:
 
 
 class GenieTester:
+    """Genie TTS 测试类 - 分阶段测试 TTS 功能"""
+    
     def __init__(self):
         self.client: Optional[GenieTTS] = None
         self.model_dir: Optional[Path] = None
@@ -38,28 +61,39 @@ class GenieTester:
         self.output_wav = "test_output.wav"
 
     async def check_paths(self) -> bool:
-        """步骤 1: 检查模型和配置文件路径"""
-        print("\n[1/5] 检查模型路径配置...")
+        """
+        阶段 1: 检查模型路径配置
+        
+        检查内容：
+        - 模型目录是否存在
+        - 配置文件是否存在
+        - 参考音频文件是否存在
+        """
+        print("\n" + "="*60)
+        print("阶段 1: 检查模型路径配置")
+        print("="*60)
         
         # 修正后的模型路径
-        base_model_path = PROJECT_ROOT / "backend" / "data" / "tts" / "GenieData" / "CharacterModels" / "v2ProPlus" / "feibi"
-        print(f"    - 目标模型路径: {base_model_path}")
+        base_model_path = ROOT_DIR / "backend" / "data" / "tts" / "GenieData" / "CharacterModels" / "v2ProPlus" / "feibi"
+        print(f"检查模型路径: {base_model_path}")
 
         if not base_model_path.exists():
-            print(f"❌ 错误: 未找到模型目录: {base_model_path}")
-            print(f"    - 当前工作目录: {Path.cwd()}")
-            print(f"    - PROJECT_ROOT: {PROJECT_ROOT}")
+            print(f"❌ 错误: 未找到模型目录")
+            print(f"   期望路径: {base_model_path}")
+            print(f"   根目录: {ROOT_DIR}")
             return False
 
         self.model_dir = base_model_path / "tts_models"
         config_path = base_model_path / "prompt_wav.json"
 
         if not self.model_dir.exists():
-            print(f"❌ 错误: tts_models 子目录不存在: {self.model_dir}")
+            print(f"❌ 错误: tts_models 子目录不存在")
+            print(f"   期望路径: {self.model_dir}")
             return False
         
         if not config_path.exists():
-            print(f"❌ 错误: 配置文件不存在: {config_path}")
+            print(f"❌ 错误: 配置文件不存在")
+            print(f"   期望路径: {config_path}")
             return False
 
         # 读取参考音频配置
@@ -72,7 +106,8 @@ class GenieTester:
             self.ref_audio_path = base_model_path / "prompt_wav" / ref_wav_name
             
             if not self.ref_audio_path.exists():
-                print(f"❌ 错误: 参考音频文件不存在: {self.ref_audio_path}")
+                print(f"❌ 错误: 参考音频文件不存在")
+                print(f"   期望路径: {self.ref_audio_path}")
                 return False
                 
         except Exception as e:
@@ -80,25 +115,49 @@ class GenieTester:
             return False
 
         print("✅ 路径检查通过")
+        print(f"   模型目录: {self.model_dir}")
+        print(f"   参考音频: {self.ref_audio_path}")
+        print(f"   参考文本: {self.ref_text}")
         return True
 
     async def connect_service(self) -> bool:
-        """步骤 2: 连接 TTS 服务"""
-        print("\n[2/5] 连接服务器 (127.0.0.1:8001)...")
+        """
+        阶段 2: 连接 TTS 服务
+        
+        检查内容：
+        - 服务是否在 8001 端口运行
+        - 网络连接是否正常
+        """
+        print("\n" + "="*60)
+        print("阶段 2: 连接 TTS 服务")
+        print("="*60)
+        print("尝试连接到 127.0.0.1:8001...")
+        
         self.client = GenieTTS()
         if not await self.client.connect():
-            print("❌ 连接失败！请确保 Genie TTS 服务已在 8001 端口启动。")
+            print("❌ 连接失败！")
+            print("   请确保 Genie TTS 服务已在 8001 端口启动")
             return False
         print("✅ 服务器连接成功")
         return True
 
     async def load_character(self) -> bool:
-        """步骤 3: 加载角色模型"""
-        print("\n[3/5] 加载角色模型...")
+        """
+        阶段 3: 加载角色模型
+        
+        检查内容：
+        - 模型文件是否完整
+        - 模型加载是否成功
+        """
+        print("\n" + "="*60)
+        print("阶段 3: 加载角色模型")
+        print("="*60)
+        
         if not self.client or not self.model_dir:
             print("❌ 前置条件未满足 (Client 或 Model Dir 为空)")
             return False
 
+        print(f"加载模型: {self.model_dir}")
         # character_name 只是标识符，关键是 onnx_model_dir
         if not await self.client.load_character("feibi_test", str(self.model_dir)):
             print("❌ 加载角色失败")
@@ -107,12 +166,24 @@ class GenieTester:
         return True
 
     async def set_reference(self) -> bool:
-        """步骤 4: 设置参考音频"""
-        print("\n[4/5] 设置参考音频...")
+        """
+        阶段 4: 设置参考音频
+        
+        检查内容：
+        - 参考音频格式是否正确
+        - 参考文本是否有效
+        """
+        print("\n" + "="*60)
+        print("阶段 4: 设置参考音频")
+        print("="*60)
+        
         if not self.client or not self.ref_audio_path:
             print("❌ 前置条件未满足 (Client 或 Reference Audio Path 为空)")
             return False
 
+        print(f"参考音频: {self.ref_audio_path}")
+        print(f"参考文本: {self.ref_text}")
+        
         if not await self.client.set_reference_audio(str(self.ref_audio_path), self.ref_text, "zh"):
             print("❌ 设置参考音频失败")
             return False
@@ -120,9 +191,21 @@ class GenieTester:
         return True
 
     async def synthesize_test(self) -> bool:
-        """步骤 5: 合成测试与保存"""
-        text = "你好，这是一个测试音频，用于验证服务是否正常运行。"
-        print(f"\n[5/5] 正在合成: '{text}'")
+        """
+        阶段 5: 合成测试与保存
+        
+        测试内容：
+        - 文本转语音合成
+        - 音频流接收
+        - WAV 文件保存
+        """
+        print("\n" + "="*60)
+        print("阶段 5: 合成测试与保存")
+        print("="*60)
+        
+        text = "你好，这是一个测试音频，用于验证 Genie TTS 服务是否正常运行。"
+        print(f"测试文本: {text}")
+        
         
         if not self.client:
             return False
@@ -131,7 +214,7 @@ class GenieTester:
             all_audio_data = bytearray()
             chunk_count = 0
             
-            print("    - 接收数据流: ", end="")
+            print("接收音频流: ", end="")
             async for chunk in self.client.synthesize_stream(text):
                 chunk_count += 1
                 all_audio_data.extend(chunk)
@@ -142,7 +225,7 @@ class GenieTester:
                 print("\n❌ 未接收到任何音频数据")
                 return False
 
-            print(f"    - 接收 {chunk_count} 个音频块，共 {len(all_audio_data)} 字节")
+            print(f"接收到 {chunk_count} 个音频块，总计 {len(all_audio_data)} 字节")
             
             # 保存 WAV
             with wave.open(self.output_wav, "wb") as wav_file:
@@ -161,36 +244,58 @@ class GenieTester:
             return False
 
     async def cleanup(self):
+        """清理资源"""
         if self.client:
             await self.client.close()
+            print("\n🔌 已断开服务器连接")
+
 
 async def main():
+    """主测试函数"""
+    print("="*60)
+    print("🚀 Genie TTS 引擎测试")
+    print("="*60)
+    
     tester = GenieTester()
+    all_passed = True
     
     try:
         # 按顺序执行测试步骤
-        if not await tester.check_paths():
-            return
-            
-        if not await tester.connect_service():
-            return
-            
-        if not await tester.load_character():
-            return
-            
-        if not await tester.set_reference():
-            return
-            
-        if not await tester.synthesize_test():
-            return
-            
-        print("\n✨ 所有测试步骤完成! ✨")
+        tests = [
+            ("检查模型路径", tester.check_paths),
+            ("连接服务", tester.connect_service),
+            ("加载角色模型", tester.load_character),
+            ("设置参考音频", tester.set_reference),
+            ("合成测试", tester.synthesize_test),
+        ]
         
+        for test_name, test_func in tests:
+            if not await test_func():
+                print(f"\n❌ 测试失败: {test_name}")
+                all_passed = False
+                break
+        
+        if all_passed:
+            print("\n" + "="*60)
+            print("✨ 所有测试阶段完成！")
+            print("="*60)
+        
+    except Exception as e:
+        print(f"\n❌ 测试过程中发生错误: {e}")
+        import traceback
+        traceback.print_exc()
+        all_passed = False
     finally:
         await tester.cleanup()
+    
+    return all_passed
+
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        success = asyncio.run(main())
+        sys.exit(0 if success else 1)
     except KeyboardInterrupt:
-        print("\n测试已取消")
+        print("\n\n⚠️  测试被用户中断")
+        sys.exit(1)
+
