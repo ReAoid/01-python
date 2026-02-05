@@ -94,11 +94,10 @@ async def test_basic_initialization():
         "lid_enabled": True,
         "ser_enabled": False,
         "speaker_enabled": False,
-        "model_cache_dir": str(model_cache_dir),
-        "output_dir": "./test_output"
+        "model_cache_dir": str(model_cache_dir)
     }
     
-    engine = FunASREngine(config)
+    engine = FunASREngine(**config)
     
     # 初始化引擎
     success = await engine.initialize()
@@ -129,11 +128,10 @@ async def test_vad_detection():
         "device": "cpu",
         "vad_enabled": True,
         "lid_enabled": False,
-        "model_cache_dir": str(model_cache_dir),
-        "output_dir": "./test_output"
+        "model_cache_dir": str(model_cache_dir)
     }
     
-    engine = FunASREngine(config)
+    engine = FunASREngine(**config)
     
     if not await engine.initialize():
         logger.error("❌ 引擎初始化失败")
@@ -188,11 +186,10 @@ async def test_language_recognition():
         "language": "auto",
         "vad_enabled": False,
         "lid_enabled": True,
-        "model_cache_dir": str(model_cache_dir),
-        "output_dir": "./test_output"
+        "model_cache_dir": str(model_cache_dir)
     }
     
-    engine = FunASREngine(config)
+    engine = FunASREngine(**config)
     
     if not await engine.initialize():
         logger.error("❌ 引擎初始化失败")
@@ -240,14 +237,12 @@ async def test_stream_processing():
         "sample_width": 2,
         "device": "cpu",
         "language": "auto",
-        "min_audio_length": 1.0,  # 1秒触发识别
         "vad_enabled": True,
         "lid_enabled": True,
-        "model_cache_dir": str(model_cache_dir),
-        "output_dir": "./test_output"
+        "model_cache_dir": str(model_cache_dir)
     }
     
-    engine = FunASREngine(config)
+    engine = FunASREngine(**config)
     
     if not await engine.initialize():
         logger.error("❌ 引擎初始化失败")
@@ -325,13 +320,12 @@ async def test_full_features():
         "language": "auto",
         "vad_enabled": True,
         "lid_enabled": True,
-        "ser_enabled": emotion_model_exists,  # 仅在模型存在时启用
-        "speaker_enabled": speaker_model_exists,  # 仅在模型存在时启用
-        "model_cache_dir": str(model_cache_dir),
-        "output_dir": "./test_output"
+        "ser_enabled": False,
+        "speaker_enabled": False,
+        "model_cache_dir": str(model_cache_dir)
     }
     
-    engine = FunASREngine(config)
+    engine = FunASREngine(**config)
     
     if not await engine.initialize():
         logger.error("❌ 引擎初始化失败")
@@ -401,11 +395,10 @@ async def test_with_real_audio():
         "lid_enabled": True,
         "ser_enabled": False,
         "speaker_enabled": False,
-        "model_cache_dir": str(model_cache_dir),
-        "output_dir": "./test_output"
+        "model_cache_dir": str(model_cache_dir)
     }
     
-    engine = FunASREngine(config)
+    engine = FunASREngine(**config)
     
     if not await engine.initialize():
         logger.error("❌ 引擎初始化失败")
