@@ -2,7 +2,7 @@ import logging
 import asyncio
 import time
 from backend.core.event_bus import event_bus, Event, EventType
-from backend.utils.openai_llm import OpenaiLlm
+from backend.services.llm_service import get_llm
 from backend.core.message import Message
 from backend.config.prompts import SYSTEM_PROMPT_SELF_AWARENESS, SELF_AWARENESS_PROMPT_REFLECTION
 
@@ -14,7 +14,7 @@ class SelfAwarenessService:
     在空闲时间运行，进行反思、研究和进化。
     """
     def __init__(self):
-        self.llm = OpenaiLlm()
+        self.llm = get_llm()
         self.last_activity = time.time()
         self.is_running = False
         

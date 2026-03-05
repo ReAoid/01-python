@@ -20,7 +20,6 @@ from datetime import datetime, timezone, timedelta
 
 from backend.core.message import Message
 from backend.core.llm import Llm
-from backend.utils.openai_llm import OpenaiLlm
 from backend.config import settings, paths
 
 from .short_term import ShortTermMemory

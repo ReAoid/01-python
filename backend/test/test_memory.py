@@ -58,7 +58,7 @@ try:
         MemoryManager,
         MemoryStructurer
     )
-    from backend.utils.openai_llm import OpenaiLlm
+    from backend.utils.llm.openai_llm import OpenaiLlm
     from backend.config import settings
 except ImportError as e:
     print(f"❌ 无法导入必要模块: {e}")

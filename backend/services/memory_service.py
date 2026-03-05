@@ -2,7 +2,7 @@ import logging
 import asyncio
 from backend.core.event_bus import event_bus, Event, EventType
 from backend.utils.memory.memory_manager import MemoryManager
-from backend.utils.openai_llm import OpenaiLlm
+from backend.services.llm_service import get_llm
 from backend.core.message import Message
 from backend.config import settings
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 class MemoryService:
     def __init__(self):
-        self.llm = OpenaiLlm()
+        self.llm = get_llm()
         self.memory_manager = MemoryManager(llm=self.llm)
         
         # [优化] 移除 CHAT_COMPLETED 监听

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from typing import List, Dict, Optional
-from backend.utils.openai_llm import OpenaiLlm
+from backend.services.llm_service import get_llm
 from backend.core.message import Message
 from backend.config import settings
 from backend.config.prompts import SYSTEM_PROMPT_DEFAULT_ASSISTANT
@@ -22,8 +22,8 @@ class TextLLMClient:
         # 1. 配置加载
         self.max_history = settings.memory.max_history_length
 
-        # 2. 初始化 LLM
-        self.llm = OpenaiLlm()
+        # 2. 初始化 LLM (根据配置的运营商自动选择)
+        self.llm = get_llm()
 
         # 3. 历史记录
         self.history: List[Message] = []

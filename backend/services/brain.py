@@ -15,10 +15,10 @@ from backend.config.prompts import build_personalized_system_prompt
 # 引入服务组件
 from backend.services.asr_service import ASRService
 from backend.services.tts_service import TTSService
-from backend.services.text_llm_client import TextLLMClient
+from backend.utils.llm.text_llm_client import TextLLMClient
 from backend.core.event_bus import event_bus, Event, EventType
 from backend.utils.memory.memory_manager import MemoryManager, generate_session_id
-from backend.utils.openai_llm import OpenaiLlm
+from backend.services.llm_service import get_llm
 
 logger = logging.getLogger(__name__)
 
@@ -80,10 +80,10 @@ class SessionManager:
         if memory_manager:
             self.memory_manager = memory_manager
             # 如果复用了 memory_manager，我们可以复用它的 llm 或者不持有 llm_memory_service
-            # 如果 memory_manager.llm 是 OpenaiLlm 类型，我们引用它，否则新建（通常是复用）
-            self.llm_memory_service = getattr(memory_manager, 'llm', None) or OpenaiLlm()
+            # 如果 memory_manager.llm 是 Llm 类型，我们引用它，否则新建（通常是复用）
+            self.llm_memory_service = getattr(memory_manager, 'llm', None) or get_llm()
         else:
-            self.llm_memory_service = OpenaiLlm()
+            self.llm_memory_service = get_llm()
             self.memory_manager = MemoryManager(llm=self.llm_memory_service)
 
         # --- 双 Session 架构 (实现热切换) ---

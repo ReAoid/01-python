@@ -1,7 +1,7 @@
 import logging
 import asyncio
 from backend.core.event_bus import event_bus, Event, EventType
-from backend.utils.openai_llm import OpenaiLlm
+from backend.services.llm_service import get_llm
 from backend.core.message import Message
 from backend.config.prompts import SYSTEM_PROMPT_TASK_ANALYZER, TASK_PROMPT_ANALYZE_INTENT
 
@@ -13,7 +13,7 @@ class TaskService:
     "做事"服务器。
     """
     def __init__(self):
-        self.llm = OpenaiLlm()
+        self.llm = get_llm()
         event_bus.subscribe(EventType.CHAT_COMPLETED, self.handle_chat_analysis)
         logger.info("任务服务已初始化。")
 
