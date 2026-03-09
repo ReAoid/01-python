@@ -12,7 +12,7 @@ LLM 服务模块测试文件
 
 使用方法：
     cd /Users/mingy/Documents/python/01-python
-    python backend/test/test_llm_service.py
+    python backend/test/test_llm.py
 
 前置条件：
     - 配置有效的 LLM API（在 backend/config/core_config.json 中）
