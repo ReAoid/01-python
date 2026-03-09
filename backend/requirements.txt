@@ -23,6 +23,11 @@ pyaudio>=0.2.14
 
 # 异步 HTTP 客户端
 aiohttp>=3.9.0
+httpx>=0.27.0
+
+# 任务调度
+filelock>=3.13.0
+croniter>=2.0.0
 
 # WebSocket 支持
 websockets>=12.0
