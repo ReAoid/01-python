@@ -7,7 +7,7 @@ LLM 服务模块测试文件
 阶段 2: 运营商选择测试
 阶段 3: OpenAI LLM 功能测试
 阶段 4: Ollama LLM 功能测试
-阶段 5: TextLLMClient 异步客户端测试
+阶段 5: LLMClient 异步客户端测试
 阶段 6: 运营商切换测试
 
 使用方法：
@@ -46,7 +46,7 @@ if str(ROOT_DIR) not in sys.path:
 
 try:
     from backend.services.llm_service import get_llm, get_current_provider, is_provider_available
-    from backend.utils.llm import TextLLMClient, OpenaiLlm, OllamaLlm
+    from backend.utils.llm import LLMClient, OpenaiLlm, OllamaLlm
     from backend.core.message import Message
     from backend.config import settings
 except ImportError as e:
@@ -329,7 +329,7 @@ class LLMServiceTester:
     
     async def test_text_llm_client(self) -> bool:
         """
-        阶段 5: TextLLMClient 异步客户端测试
+        阶段 5: LLMClient 异步客户端测试
         
         测试内容：
         - 客户端初始化
@@ -338,7 +338,7 @@ class LLMServiceTester:
         - 历史记录管理
         """
         print("\n" + "="*60)
-        print("阶段 5: TextLLMClient 异步客户端测试")
+        print("阶段 5: LLMClient 异步客户端测试")
         print("="*60)
         
         if not self.api_available:
@@ -347,12 +347,12 @@ class LLMServiceTester:
         
         try:
             # 测试 5.1: 客户端初始化
-            print("\n[5.1] 初始化 TextLLMClient...")
+            print("\n[5.1] 初始化 LLMClient...")
             try:
-                client = TextLLMClient(
+                client = LLMClient(
                     system_prompt="You are a helpful assistant. Be concise."
                 )
-                print(f"✅ TextLLMClient 初始化成功")
+                print(f"✅ LLMClient 初始化成功")
                 print(f"   最大历史长度: {client.max_history}")
             except Exception as e:
                 print(f"⚠️  客户端初始化失败: {e}")
@@ -488,7 +488,7 @@ async def main():
         ]
         
         async_tests = [
-            ("TextLLMClient 异步客户端", tester.test_text_llm_client),
+            ("LLMClient 异步客户端", tester.test_text_llm_client),
         ]
         
         results = []

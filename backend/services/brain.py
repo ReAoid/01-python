@@ -15,7 +15,7 @@ from backend.config.prompts import build_personalized_system_prompt
 # 引入服务组件
 from backend.services.asr_service import ASRService
 from backend.services.tts_service import TTSService
-from backend.utils.llm.text_llm_client import TextLLMClient
+from backend.utils.llm.llm_client import LLMClient
 from backend.core.event_bus import event_bus, Event, EventType
 from backend.utils.memory.memory_manager import MemoryManager, generate_session_id
 from backend.services.llm_service import get_llm
@@ -87,8 +87,8 @@ class SessionManager:
             self.memory_manager = MemoryManager(llm=self.llm_memory_service)
 
         # --- 双 Session 架构 (实现热切换) ---
-        self.current_llm: Optional[TextLLMClient] = None  # 当前服务中的 LLM
-        self.pending_llm: Optional[TextLLMClient] = None  # 后台预热中的 LLM
+        self.current_llm: Optional[LLMClient] = None  # 当前服务中的 LLM
+        self.pending_llm: Optional[LLMClient] = None  # 后台预热中的 LLM
 
         # --- 热切换关键状态 ---
         self.session_start_time = 0  # 会话开始时间
@@ -634,7 +634,7 @@ class SessionManager:
 
         except asyncio.CancelledError:
             logger.info("LLM consumer task cancelled.")
-            # 任务取消时，不需要做特殊处理，TextLLMClient 会处理自己的 task
+            # 任务取消时，不需要做特殊处理，LLMClient 会处理自己的 task
         except Exception as e:
             logger.error(f"Error in consumer task: {e}")
 
@@ -897,13 +897,13 @@ class SessionManager:
         asyncio.create_task(self._safe_close(old_llm))
         print("Session swapped successfully.")
 
-    async def _safe_close(self, session: TextLLMClient):
+    async def _safe_close(self, session: LLMClient):
         """
         安全关闭旧 Session。
         延迟 5 秒后关闭,确保所有音频播放完成。
         
         Args:
-            session: 要关闭的 TextLLMClient 实例
+            session: 要关闭的 LLMClient 实例
         """
         await asyncio.sleep(5)
         await session.close()
@@ -912,7 +912,7 @@ class SessionManager:
     # 5. 辅助方法
     # =========================================================================
 
-    async def _create_llm_session(self, is_renew: bool = False) -> TextLLMClient:
+    async def _create_llm_session(self, is_renew: bool = False) -> LLMClient:
         """
         创建并初始化 LLM Session 实例。
         
@@ -921,7 +921,7 @@ class SessionManager:
                      不会立即绑定到当前 UI 输出,而是静默运行
         
         Returns:
-            TextLLMClient: 已连接的 LLM 客户端实例
+            LLMClient: 已连接的 LLM 客户端实例
         """
         # 构建个性化系统提示词（融合用户信息）
         system_prompt = build_personalized_system_prompt(
@@ -933,7 +933,12 @@ class SessionManager:
             long_term_context=""  # 这里为空，在对话时通过 RAG 注入
         )
         
-        llm = TextLLMClient(system_prompt=system_prompt)
+        # 使用 chat skill 创建 LLM 客户端
+        llm = LLMClient(
+            system_prompt=system_prompt,
+            skill_name="chat",  # 聊天 LLM 使用 chat skill
+            enable_tools=True
+        )
         await llm.connect()
         return llm
 

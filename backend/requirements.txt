@@ -12,6 +12,9 @@ pydantic>=2.10.0
 # Pydantic Settings (2.3.0+ 引入了 dotenv_settings 参数，推荐 2.7+)
 pydantic-settings>=2.7.0
 
+# YAML 解析 (用于 Skill 配置)
+PyYAML>=6.0.0
+
 # 向量计算 (Python 3.12 建议 numpy >= 1.26.0)
 numpy>=1.26.0
 
